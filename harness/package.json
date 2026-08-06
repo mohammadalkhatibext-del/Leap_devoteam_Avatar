@@ -1,0 +1,16 @@
+{
+  "name": "leap-avatar-harness",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 lip-sync bake-off: feed identical Arabic fixture audio to every avatar renderer.",
+  "scripts": {
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@anam-ai/js-sdk": "^4.0.0",
+    "livekit-client": "^2.9.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

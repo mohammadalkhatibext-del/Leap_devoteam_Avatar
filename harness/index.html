@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 0 — Lip-sync bake-off</title>
+    <style>
+      /* Devoteam tokens (DEVOTEAM_BRAND_DESIGN.md §10.1). Dark surface per §8.1 —
+         no brand photography available, so neon on deep neutral is the on-brand look. */
+      :root {
+        --dv-poppy: #f8485e;
+        --dv-poppy-ink: #d6334a;
+        --dv-grey: #3c3c3a;
+        --dv-surface-base: #141413;
+        --dv-surface-1: #1e1e1d;
+        --dv-surface-2: #2a2a28;
+        --dv-fresh-mint: #5ab891;
+        --dv-intense-fire: #fcc354;
+        --dv-radius-card: 15px;
+        --dv-radius-button: 12px;
+        --dv-radius-hero: 25px;
+        --dv-text: #fff;
+        --dv-text-muted: rgba(255, 255, 255, 0.72);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--dv-surface-base);
+        color: var(--dv-text);
+        font: 400 16px/1.6 "Montserrat", "Helvetica Neue", Arial, sans-serif;
+      }
+      h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 4px; }
+      .sub { color: var(--dv-text-muted); font-size: 0.875rem; margin: 0 0 24px; }
+      .layout { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.2fr); gap: 24px; align-items: start; }
+      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+      .card { background: var(--dv-surface-1); border-radius: var(--dv-radius-card); padding: 24px; }
+      .hero { border-radius: var(--dv-radius-hero); padding: 0; overflow: hidden; background: #000; aspect-ratio: 16/9; position: relative; }
+      video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .hero .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dv-text-muted); font-size: 0.875rem; }
+
+      label { display: block; font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dv-text-muted); margin: 16px 0 6px; }
+      select, button { font-family: inherit; font-size: 1rem; border-radius: var(--dv-radius-button); }
+      select { width: 100%; padding: 10px 12px; background: var(--dv-surface-2); color: var(--dv-text); border: 1px solid rgba(255,255,255,.15); }
+      button { padding: 10px 20px; font-weight: 500; border: none; cursor: pointer; background: var(--dv-poppy-ink); color: #fff; }
+      button:hover:not(:disabled) { background: #bd2c41; }
+      button:disabled { opacity: .4; cursor: not-allowed; }
+      button.secondary { background: transparent; color: var(--dv-text); border: 1px solid rgba(255,255,255,.25); }
+      .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+      th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--dv-text-muted); font-weight: 700; padding: 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
+      td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+      tr.key td { background: rgba(248,72,94,.07); }
+      tr.playing td { background: rgba(248,72,94,.16); }
+      .ar { direction: rtl; text-align: right; font-size: 1rem; }
+      .tests { color: var(--dv-text-muted); font-size: 0.75rem; }
+      .badge { display: inline-block; font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 8px; border-radius: 12px; background: var(--dv-poppy); color: #fff; }
+      .score { display: flex; gap: 3px; }
+      .score button { padding: 3px 8px; font-size: 0.8125rem; background: var(--dv-surface-2); border: 1px solid rgba(255,255,255,.12); }
+      .score button[aria-pressed="true"] { background: var(--dv-poppy); border-color: var(--dv-poppy); }
+      .ms { font-variant-numeric: tabular-nums; color: var(--dv-fresh-mint); font-size: 0.8125rem; }
+
+      #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.75rem; color: var(--dv-text-muted); background: #0d0d0c; border-radius: var(--dv-radius-card); padding: 12px; height: 140px; overflow-y: auto; white-space: pre-wrap; margin-top: 16px; }
+      #log .err { color: var(--dv-poppy); }
+      .note { font-size: 0.75rem; color: var(--dv-text-muted); margin-top: 12px; }
+      code { background: var(--dv-surface-2); padding: 1px 5px; border-radius: 4px; font-size: 0.8125em; }
+    </style>
+  </head>
+  <body>
+    <h1>Phase 0 — Lip-sync bake-off</h1>
+    <p class="sub">
+      Identical Arabic audio into every renderer. Bolded rows are the ones that
+      actually discriminate — a renderer scoring ≤2 on those fails regardless of its average.
+    </p>
+
+    <div class="layout">
+      <div>
+        <div class="card hero">
+          <video id="avatar" autoplay playsinline></video>
+          <div class="placeholder" id="placeholder">not connected</div>
+        </div>
+
+        <div class="card" style="margin-top: 16px">
+          <label for="renderer">Renderer</label>
+          <select id="renderer">
+            <option value="anam">Anam (audio passthrough)</option>
+            <option value="heygen">HeyGen LiveAvatar (LITE)</option>
+          </select>
+
+          <label for="voice">Fixture set — same audio for every renderer</label>
+          <select id="voice"><option>loading…</option></select>
+
+          <div class="row">
+            <button id="connect">Connect</button>
+            <button id="playAll" class="secondary" disabled>Play all 12</button>
+            <button id="interrupt" class="secondary" disabled>Interrupt</button>
+            <button id="disconnect" class="secondary" disabled>Disconnect</button>
+          </div>
+
+          <div id="log"></div>
+          <p class="note">
+            Keys live in <code>.env</code> at the project root and never reach the browser —
+            the dev server mints short-lived session tokens.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th style="width:1%">#</th><th>Phrase</th><th style="width:1%">Latency</th><th style="width:1%">Lip-sync</th></tr>
+          </thead>
+          <tbody id="phrases"></tbody>
+        </table>
+        <div class="row">
+          <button id="export">Copy scores for SCORING.md</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
