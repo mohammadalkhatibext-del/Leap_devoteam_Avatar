@@ -2,6 +2,8 @@
 .env.local
 node_modules/
 fixtures/audio/
+out/
 dist/
+__pycache__/
 .next/
 *.log

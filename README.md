@@ -9,6 +9,59 @@ questions from Devoteam content, grounded with the Claude Citations API.
 
 ---
 
+## Getting started
+
+| Requirement | Version | Needed for |
+|---|---|---|
+| **Node.js** | **≥ 20.12** — 22 LTS recommended | everything |
+| **Python** | 3.9+ | the Arabic TTS sidecar and the fixture audio |
+| **Anthropic API key** | — | the answer engine |
+
+Node 20.12 is a hard floor, not a preference: every entry point calls
+`process.loadEnvFile()`, which does not exist before it. On Node 18 you get
+`process.loadEnvFile is not a function` before any of your keys are read.
+
+```bash
+git clone https://github.com/mohammadalkhatibext-del/Leap_devoteam_Avatar.git
+cd Leap_devoteam_Avatar
+
+npm install                       # root deps + harness/ (via postinstall)
+pip install -r requirements.txt   # edge-tts + miniaudio
+
+cp .env.example .env              # then paste in ANTHROPIC_API_KEY
+```
+
+**Keys.** `.env` is gitignored, so it does not arrive with the clone — ask Mohammad for
+the values. Only two matter today:
+
+- `ANTHROPIC_API_KEY` — **required**. Nothing in Phase 1 runs without it.
+- `ANAM_API_KEY` + `ANAM_AVATAR_ID` — required only for the avatar harness.
+
+Everything else in `.env.example` (Azure, ElevenLabs, HeyGen, Simli, Tavus) is
+card-blocked. Leave it blank — those paths erroring is the expected state, not a
+broken setup.
+
+**Then verify the install in this order.** Each step adds one leg of the pipeline, so
+whatever breaks tells you exactly which leg:
+
+```bash
+node scripts/ask.mjs --probe             # 1. answer engine + guardrails, no audio
+node scripts/speak.mjs "ما هي ديفوتيم؟"    # 2. + TTS, writes out/answer.wav
+
+python scripts/render-edge-tts.py        # 3. fixture audio for the bake-off
+npm run harness                          # 4. avatar harness on :5173
+```
+
+Step 1 is the best five minutes of onboarding available: it prints each question next
+to the behaviour it *should* produce, so it doubles as the spec. Step 2 starts the
+Python TTS sidecar on `:8765` by itself — the number to watch in its output is **time
+to first audio**, not the total.
+
+Step 3 is not optional before step 4. `fixtures/audio/` is gitignored, so a fresh clone
+has no audio and the harness shows an empty voice list — that is missing input, not a bug.
+
+---
+
 ## Phase 0 — the lip-sync bake-off (start here, costs $0–10)
 
 Comparing avatar vendors doesn't need a working conversation — it needs *audio in,
@@ -16,22 +69,22 @@ video out*. So render the Arabic test phrases **once**, then feed the **identica
 files** to every renderer. Controlled experiment, free tiers only.
 
 ```bash
-cp .env.example .env      # fill in AZURE_SPEECH_KEY + region (F0 tier is free)
-
-node scripts/render-tts.mjs azure
-node scripts/render-tts.mjs azure --voice ar-SA-ZariyahNeural
-node scripts/render-tts.mjs elevenlabs
+python scripts/render-edge-tts.py                     # all four voices — the path that works today
+python scripts/render-edge-tts.py ar-SA-HamedNeural   # just one
 ```
 
 Output lands in `fixtures/audio/<provider>/<voice>/*.wav` — 24 kHz, 16-bit, mono,
 which is the common denominator across HeyGen Lite, Anam passthrough, Simli and
 Tavus echo. One render feeds all four.
 
+The Azure and ElevenLabs renderers exist (`node scripts/render-tts.mjs azure |
+elevenlabs`) but both are card-blocked, so nobody can run them yet. `render-edge-tts.py`
+reaches the *same* Microsoft neural voices without a key, which is why the Phase 0
+scores below are real despite no vendor account existing.
+
 Then score with [`SCORING.md`](./SCORING.md). **Step 1 (voice ranking) gates
 everything** — if the Arabic voice is wrong, no renderer saves you, and you'll have
 spent nothing to find out.
-
-Requires Node 18+. No dependencies.
 
 ### The 12 fixture phrases
 
@@ -45,6 +98,54 @@ surface, not generic sentences. The three that actually discriminate between ven
 | **07** | Emphatic/pharyngeal consonants (ق ط ص ض ظ ع ح خ) — no English equivalent, so English-trained visemes have nothing to map to. |
 
 A renderer scoring ≤2 on any of those fails regardless of its average.
+
+---
+
+## Phase 1 — the answer engine (built, testable without mic or avatar)
+
+```bash
+node scripts/ask.mjs "ما هي ديفوتيم؟"     # one question, text only
+node scripts/ask.mjs --probe               # the guardrail probe set
+node scripts/speak.mjs "ما هي ديفوتيم؟"    # same, spoken -> out/answer.wav
+```
+
+Deepgram STT → **Claude (`claude-opus-5`) + Citations over the Devoteam corpus** → Arabic
+TTS → `AvatarAdapter`. The two middle legs are built; STT and the avatar are next.
+
+`devoteam_information/devoteam-knowledge-base.md` is ~30k tokens — small enough for
+long context, so there is **no vector database**. It's split one document block per
+`##` section, so a citation names the section a booth colleague can check
+("10. Devoteam Middle East") rather than a character offset.
+
+**Prompt caching is the cost story.** The corpus is written to cache once and read at
+~10% price on every question after that: roughly **$0.02 per question**, so a
+3-day event lands near $20 rather than $200. The corpus sits on the *first* user turn
+and never moves — appending history above it would shift the prefix and silently
+invalidate the whole cache, which costs 10× per follow-up and raises no error.
+
+**The register decision is enforced in the prompt**, not hoped for: MSA for the
+substance, Gulf dialect for the greeting and the human handoff, and the greeting
+fires once per visitor rather than once per answer.
+
+**Answers are written to be spoken, not read.** No markdown, no digits (numbers are
+spelled as Arabic words so the TTS voice pronounces them), two to four sentences,
+answer first. `ask()` streams and emits complete sentences as they form, so TTS can
+start on sentence one at ~1.2 s instead of waiting ~5 s for the full reply.
+
+### Guardrails — verified, not assumed
+
+`--probe` runs nine questions whose *expected* behaviour is printed next to each.
+All nine pass as of the Phase 1 commit; the two that matter most:
+
+| Probe | Result |
+|---|---|
+| "كم تكلفة مشروع الذكاء الاصطناعي معكم؟" (pricing) | Declines, offers a human |
+| "كم كان ربح ديفوتيم في الربع الأول من ٢٠٢٦؟" (not in corpus) | *"هذا التفصيل غير متوفر لديّ"*, gives what **is** known, offers a human — invents nothing |
+
+Politics is redirected, competitor comparisons return Devoteam's multi-cloud position
+rather than an opinion, and an English question is answered in English. Re-run
+`--probe` after any prompt or corpus edit — it is the regression test for the one
+failure mode that would actually embarrass Devoteam at LEAP.
 
 ---
 
@@ -78,7 +179,11 @@ nothing else — then swapping renderers is one env var, not a rewrite.
 - **Devoteam logo SVGs are missing.** `DEVOTEAM_BRAND_DESIGN.md` §3.1 references
   `Assets/*.svg`; that folder isn't in this repo or the HRSD project. Needed for the
   header and favicon.
-- **Knowledge corpus not yet supplied.** Page count decides whether long-context +
-  Citations holds (it should, for a booth-sized corpus) or retrieval is needed.
+- **No Arabic TTS that can ship.** Azure and ElevenLabs are both card-blocked, so the
+  only working Arabic voice is `edge-tts`, an unofficial endpoint. Fine for building;
+  must not be what runs on the booth floor. Quality is not the issue — it is the same
+  Microsoft neural voice Azure sells.
+- **Only one renderer is reachable** (Anam). HeyGen, Simli and Tavus are all
+  card-blocked, so the backup is the `STRATEGY.md` §5 fallback, not a second vendor.
 - The brand doc is written as a migration guide for the HRSD Next.js app. Use §10.1
   (token block), §2.2 (type scale) and the rules; ignore §10's migration map.

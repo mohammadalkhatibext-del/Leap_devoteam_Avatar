@@ -1,6 +1,7 @@
 # Agentic Avatar for the Devoteam Booth at LEAP: A 3-Day Build Plan, Vendor Comparison, and Pricing
 
 ## TL;DR
+
 - Build a composable pipeline, not an all-in-one platform: use HeyGen LiveAvatar (Lite mode, about $0.10/min) or Anam AI as the photorealistic rendering layer, drive it with your own Claude-based RAG orchestrator plus a Gulf-quality Arabic TTS (Azure ar-SA or ElevenLabs), and wire it together with LiveKit Agents, which has official plugins for every major avatar vendor and first-class support for AI coding agents like Claude Code.
 - Arabic is the single biggest technical risk. HeyGen's and most vendors' native "interactive" language menus do not include Arabic, so you must go "bring your own ASR/TTS" (HeyGen Lite mode, Tavus echo mode, or Anam/Beyond Presence audio passthrough). Deepgram Nova-3 (17 Arabic variants, under 300ms, up to ~40% lower word error rate than competitors) and ElevenLabs Scribe v2 Realtime (3.1% WER on the Arabic FLEURS benchmark, 150ms latency) are the most reliable real-time Arabic STT; Azure ar-SA neural voices (Hamed/Zariyah) or ElevenLabs give the best Gulf/MSA TTS. Whisper-based ASR fails on Arabic and should be avoided.
 - Two vendors let you prototype in parallel within hours and are fully self-serve (no sales call, which is a hard blocker under a 3-day deadline): HeyGen LiveAvatar and Anam AI, both with official LiveKit plugins and starter repos. Tavus and Beyond Presence are strong self-serve backups. Avoid anything gated behind enterprise sales (DeepBrain kiosk, Soul Machines, UneeQ) and avoid fully self-hosted open source (MuseTalk/Wav2Lip) for a 3-day timeline.
@@ -59,6 +60,7 @@ For a fixed, modest corpus of Devoteam documents, do NOT stand up a vector datab
 - **Managed RAG if the corpus is large or changes often:** OpenAI Assistants file search, Vertex AI Search, Azure AI Search (also gives you Saudi/UAE data-region options), Pinecone or Supabase pgvector, LlamaCloud, Vectara, Ragie, or no-code CustomGPT.ai / Chatbase. For Arabic retrieval quality, use multilingual embeddings (e.g., Cohere multilingual or OpenAI text-embedding-3-large) and test retrieval on real Arabic queries; naive English-only embeddings degrade Arabic recall.
 
 **Guardrail strategy (keep the avatar strictly on Devoteam):**
+
 - System prompt: "You are the Devoteam booth assistant at LEAP. Answer ONLY using the provided Devoteam documents. If the answer is not in the documents, say you don't have that information and offer to connect the visitor with a Devoteam representative. Never invent services, client names, pricing, or numbers. Do not discuss competitors, politics, religion, or any topic unrelated to Devoteam."
 - Require citations for every factual claim (Citations API) and refuse when no citation is available.
 - Add a lightweight topical classifier or a pre-LLM regex/keyword gate to short-circuit obviously off-topic input.
@@ -77,17 +79,17 @@ For a fixed, modest corpus of Devoteam documents, do NOT stand up a vector datab
 
 ### 5. Pricing comparison
 
-| Vendor | Free trial | Entry paid tier | Per-minute streaming | Custom avatar | API self-serve? | Arabic path |
-|---|---|---|---|---|---|---|
-| HeyGen LiveAvatar | ~5 min Full / ~10 min Lite | Starter $19/mo (150 credits) | Lite ~$0.095-0.13; Full ~$0.19-0.25 | Included on Business ($475/mo), 1080p | Yes (Enterprise gated only) | Lite mode + your Arabic ASR/TTS |
-| Anam AI | Free tier | Usage-based | ~$0.15-0.20 (overage ~$0.11-0.16) | Persona/one-shot from image, in API | Yes | 70+ langs; passthrough for Gulf TTS |
-| Tavus CVI | 25 min free | Starter $59/mo (100 min) | Overage $0.32-0.37 | From 2-min video (~30 min train), extra $40-65 | Yes | Native Arabic (ar) or echo mode |
-| Beyond Presence | Free trial | ~$49/mo | 1 credit = 1 min | Yes | Yes | "Dozens" incl. Arabic (ElevenLabs voice) |
-| Simli | $10 credits | Pay-as-you-go | ~$0.009-0.05 | From single image | Yes | BYO TTS (full control) |
-| D-ID Agents | 14-day trial | Lite ~$4.70-5.90/mo | Streaming ~$5.90/min | From photo | Studio yes; real-time enterprise-leaning | Arabic among 100+ langs |
-| ElevenLabs Agents | Free tier | $5-6/mo Starter | $0.08-0.12 (excl. LLM) | n/a (voice only) | Yes | Strong Arabic ASR+TTS |
-| DeepBrain AI Human/Kiosk | Studio free | Studio ~$30/mo | Kiosk: sales-led | Studio shoot | Kiosk NO (sales) | Arabic TTS |
-| Synthesia Interactive | n/a | Closed beta | n/a | Digital twin ~$1,000/yr | No (beta form) | Pre-rendered only |
+| Vendor                   | Free trial                                 | Entry paid tier                                                                                            | Per-minute streaming                           | Custom avatar                            | API self-serve?                 | Arabic path                              |
+| ------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------- | ------------------------------- | ---------------------------------------- |
+| HeyGen LiveAvatar        | ~5 min Full / ~10 min Lite                 | Starter $19/mo (150 credits) | Lite ~$0.095-0.13; Full ~$0.19-0.25 | Included on Business ($475/mo), 1080p | Yes (Enterprise gated only)                    | Lite mode + your Arabic ASR/TTS          |                                 |                                          |
+| Anam AI                  | Free tier                                  | Usage-based                                                                                                | ~$0.15-0.20 (overage ~$0.11-0.16)              | Persona/one-shot from image, in API      | Yes                             | 70+ langs; passthrough for Gulf TTS      |
+| Tavus CVI                | 25 min free                                | Starter $59/mo (100 min) | Overage $0.32-0.37                                                              | From 2-min video (~30 min train), extra $40-65 | Yes                                      | Native Arabic (ar) or echo mode |                                          |
+| Beyond Presence          | Free trial                                 | ~$49/mo                                                                                                    | 1 credit = 1 min                               | Yes                                      | Yes                             | "Dozens" incl. Arabic (ElevenLabs voice) |
+| Simli                    | $10 credits | Pay-as-you-go | ~$0.009-0.05 | From single image                                                                                          | Yes                                            | BYO TTS (full control)                   |                                 |                                          |
+| D-ID Agents              | 14-day trial                               | Lite ~$4.70-5.90/mo | Streaming ~$5.90/min                                                                 | From photo                                     | Studio yes; real-time enterprise-leaning | Arabic among 100+ langs         |                                          |
+| ElevenLabs Agents        | Free tier                                  | $5-6/mo Starter | $0.08-0.12 (excl. LLM)                                                                   | n/a (voice only)                               | Yes                                      | Strong Arabic ASR+TTS           |                                          |
+| DeepBrain AI Human/Kiosk | Studio free                                | Studio ~$30/mo                                                                                             | Kiosk: sales-led                               | Studio shoot                             | Kiosk NO (sales)                | Arabic TTS                               |
+| Synthesia Interactive    | n/a                                        | Closed beta                                                                                                | n/a                                            | Digital twin ~$1,000/yr                  | No (beta form)                  | Pre-rendered only                        |
 
 **Cost estimate for a 3-day event.** Assume 6 hours/day of active conversation = 18 hours = 1,080 streaming minutes. On HeyGen LiveAvatar Lite (~$0.10/min) that is roughly $108 in avatar streaming for the whole event, comfortably inside the Essential $99/mo plan plus modest overage, or the Business plan if you want a 1080p custom avatar and 40 concurrent sessions. Add your own STT/TTS/LLM: Deepgram Arabic STT and Azure/ElevenLabs TTS at roughly $0.01-0.03/min each, plus Claude tokens, adds on the order of $50-150 for the event. Anam or Tavus at ~$0.20-0.37/min would run roughly $216-400 for the same 1,080 minutes.
 
@@ -113,6 +115,7 @@ For a fixed, modest corpus of Devoteam documents, do NOT stand up a vector datab
 **Day 3 — Hardening and venue dress rehearsal.** Add the pre-rendered fallback loop and text-chat fallback. Configure fullscreen kiosk mode, auto-relaunch, and the 5G backup router. Load-test concurrency and a full 6-hour soak. Do a noisy-environment mic test with the directional mic and push-to-talk. Freeze the build, document the runbook, and rehearse the failure drills (kill Wi-Fi, kill avatar session, confirm graceful fallback).
 
 **Starter repos and docs for Claude Code:**
+
 - LiveKit agent starter (Python): github.com/livekit-examples/agent-starter-python
 - HeyGen LiveAvatar + LiveKit starter: github.com/heygen-com/liveavatar-starter-livekit-agent-python
 - HeyGen Interactive Avatar Next.js demo: github.com/HeyGen-Official/InteractiveAvatarNextJSDemo
@@ -120,9 +123,10 @@ For a fixed, modest corpus of Devoteam documents, do NOT stand up a vector datab
 - Tavus LiveKit plugin: docs.tavus.io/sections/integrations/livekit
 - Beyond Presence: github.com/bey-dev (bey-python, bey-typescript, pipecat-bey) and docs.bey.dev
 - Simli ElevenLabs starter: github.com/simliai/create-simli-app-elevenlabs
-- Anthropic Citations API: platform.claude.com/docs/en/build-with-claude/citations
+- : platform.claude.com/docs/en/build-with-claude/citations
 
 ## Recommendations
+
 1. **Start today by provisioning three self-serve accounts in parallel:** HeyGen LiveAvatar (Essential $99), Anam (free/entry), and Tavus (Starter $59). This is the only way to compare Arabic lip-sync on your actual Devoteam content within the deadline. Do not wait on any vendor that requires a sales call.
 2. **Build Option B/C first** (LiveKit + Claude RAG + Deepgram + Azure/ElevenLabs + HeyGen LiveAvatar Lite). Treat Anam as the hot backup renderer behind the same orchestration.
 3. **Lock Arabic quality by Day 2.** If neither HeyGen Lite nor Anam gives acceptable Gulf lip-sync/voice, fall back to Tavus native Arabic or route Azure ar-SA through echo/passthrough. If Arabic ASR is the weak point, compare Deepgram Nova-3 against ElevenLabs Scribe v2 Realtime and, if needed, a Saudi-focused STT (e.g., Munsit) on your real test phrases.
@@ -132,6 +136,7 @@ For a fixed, modest corpus of Devoteam documents, do NOT stand up a vector datab
 **Thresholds that change the plan:** If measured Arabic STT word error rate is too high for your test phrases, switch STT provider before spending more on avatar tuning. If end-to-end latency exceeds ~2 seconds and feels broken, drop to a lighter renderer (Simli) or reduce video resolution. If venue Wi-Fi upload is below ~2 Mbps and 5G is congested, pre-stage the pre-rendered fallback as the default and use live avatar only when the network is healthy. If any preferred vendor turns out to gate the streaming API behind a sales call, drop it immediately and use the self-serve alternative.
 
 ## Caveats
+
 - Pricing changes frequently and several figures here are drawn from third-party trackers and vendor marketing rather than a single canonical price list; confirm the exact current numbers on each vendor's pricing page before purchasing. HeyGen LiveAvatar, Tavus, and ElevenLabs pricing is best verified against their own pages the day you buy.
 - Some Arabic-support and dialect claims (especially for Beyond Presence and Saudi-focused TTS vendors) come from third-party aggregators or the vendors' own marketing; benchmark independently on real Gulf-dialect audio before trusting them. Deepgram Nova-3's "up to ~40% lower WER" and ElevenLabs Scribe's "3.1% FLEURS WER" are vendor-published figures.
 - Latency figures are vendor-published or model-card claims and move quickly; measure end-to-end in your own setup.
