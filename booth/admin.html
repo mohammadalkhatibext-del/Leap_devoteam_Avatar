@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Devoteam — Booth settings</title>
+    <link rel="icon" href="/brand/devoteam-color.svg" />
+    <script>
+      document.documentElement.setAttribute(
+        "data-theme",
+        localStorage.getItem("devoteam-theme") || "dark",
+      );
+    </script>
+    <style>
+      /* The save bar is sticky, so the last card needs room to clear it — without
+         this the bar sits on top of whatever field you scrolled to. */
+      .wrap { max-width: 940px; margin: 0 auto; padding-bottom: 96px; }
+      .section { margin-bottom: 18px; }
+      .section > h2 {
+        font-size: 1.05rem; font-weight: 600; margin: 0 0 4px;
+      }
+      .section > .lead {
+        color: var(--text-muted); font-size: .87rem; margin: 0 0 18px; line-height: 1.55;
+      }
+      .field { margin-bottom: 18px; }
+      .field:last-child { margin-bottom: 0; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+
+      .choices { display: flex; gap: 8px; flex-wrap: wrap; }
+      .choices button {
+        flex: 1; min-width: 120px; padding: 12px 14px; font-weight: 500; font-size: .92rem;
+        background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+        text-align: start; line-height: 1.35;
+      }
+      .choices button small { display: block; color: var(--text-muted); font-size: .76rem; margin-top: 3px; }
+      .choices button[aria-pressed="true"] {
+        background: var(--dv-poppy); border-color: var(--dv-poppy); color: #fff;
+      }
+      .choices button[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
+
+      .toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+      .toggle input { width: auto; }
+
+      /* The save bar follows you down the page — an operator editing the bottom
+         field should never have to scroll back up to find the button. */
+      .savebar {
+        position: sticky; bottom: 0; margin-top: 20px; z-index: 5;
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        background: var(--surface-1); border: 1px solid var(--border-soft);
+        border-radius: var(--radius-card); padding: 14px 18px; box-shadow: var(--shadow);
+      }
+      .savebar .spacer { flex: 1; }
+      .status { font-size: .85rem; color: var(--text-muted); }
+      .status.ok { color: var(--dv-fresh-mint); }
+      .status.err { color: var(--dv-poppy); }
+
+      .preview {
+        background: var(--surface-sunken); border-radius: var(--radius-button);
+        padding: 14px 16px; font-size: .9rem; line-height: 1.6; color: var(--text-muted);
+      }
+      .preview b { color: var(--text); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="topbar">
+        <img class="logo" data-logo src="/brand/devoteam-color-on-dark.svg" alt="Devoteam" />
+        <div>
+          <h1>Booth settings</h1>
+          <div class="where">Changes apply to the next question — no restart needed</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="chip" id="themeBtn">◐</button>
+        <a class="chip" href="/">← Back to booth</a>
+      </header>
+
+      <!-- ---------------------------------------------------------- who -->
+      <div class="card section">
+        <h2>Who the visitor meets</h2>
+        <p class="lead">
+          The face on screen and the voice it speaks with. Each language has its own
+          voice — pick one that matches the avatar, or visitors notice the mismatch
+          before they notice anything else.
+        </p>
+
+        <div class="field">
+          <label for="profileName">Name of this setup</label>
+          <input id="profileName" type="text" placeholder="Devoteam LEAP" />
+          <p class="hint">Only for your own reference — visitors never see it.</p>
+        </div>
+
+        <div class="field">
+          <label for="avatarId">Avatar</label>
+          <select id="avatarId"></select>
+          <p class="hint" id="avatarHint">Loading the avatars available on your Anam account…</p>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label for="voiceAr">Arabic voice</label>
+            <select id="voiceAr"></select>
+          </div>
+          <div class="field">
+            <label for="voiceEn">English voice</label>
+            <select id="voiceEn"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ------------------------------------------------------ behaviour -->
+      <div class="card section">
+        <h2>How it talks</h2>
+        <p class="lead">
+          Visitors are standing up in a loud hall. Shorter answers get listened to;
+          long ones get walked away from.
+        </p>
+
+        <div class="field">
+          <label>Answer length</label>
+          <div class="choices" id="lengthChoices">
+            <button type="button" data-words="22">Short<small>~10 seconds</small></button>
+            <button type="button" data-words="35">Normal<small>~15 seconds</small></button>
+            <button type="button" data-words="55">Detailed<small>~25 seconds</small></button>
+          </div>
+          <p class="hint" id="lengthHint"></p>
+        </div>
+
+        <div class="field">
+          <label class="toggle" for="greetFirstAnswer">
+            <input id="greetFirstAnswer" type="checkbox" />
+            <span>Greet the first time each visitor speaks</span>
+          </label>
+          <p class="hint">
+            Greets once per visitor, not once per answer. Turn this off if the stand is
+            busy and you want answers only.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="idleResetMinutes">Start fresh after this many minutes of silence</label>
+          <input id="idleResetMinutes" type="number" min="1" max="60" />
+          <p class="hint">
+            Visitors walk away without pressing "new visitor". After this long the
+            conversation clears itself, so the next person doesn't inherit it.
+          </p>
+        </div>
+      </div>
+
+      <!-- ------------------------------------------------------ knowledge -->
+      <div class="card section">
+        <h2>What it knows</h2>
+        <p class="lead">
+          The assistant answers only from the Devoteam knowledge base. Anything you add
+          here is added to that — so answers using it still show a source.
+        </p>
+
+        <div class="field">
+          <label for="extraKnowledge">Extra facts for this event</label>
+          <textarea
+            id="extraKnowledge"
+            placeholder="Our stand is in Hall 2, number H2-14.&#10;The live demo runs at 11:00 and 15:00 each day.&#10;Ask for Osama if a visitor wants a meeting."
+          ></textarea>
+          <p class="hint">
+            Write plain sentences, one fact per line. Good for things too new or too
+            local for the knowledge base — stand number, demo times, who to ask for.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="customInstructions">House rules</label>
+          <textarea
+            id="customInstructions"
+            placeholder="Mention our Vision 2030 work whenever the public sector comes up.&#10;Don't offer to book meetings — take the visitor's name instead."
+          ></textarea>
+          <p class="hint">
+            Tells the assistant how to behave, not what is true. Leave empty unless you
+            have a reason.
+          </p>
+        </div>
+      </div>
+
+      <!-- ------------------------------------------------------- fallback -->
+      <div class="card section">
+        <h2>If something breaks</h2>
+        <p class="lead">
+          Networks fail at exhibitions. This is what a visitor gets instead of a frozen
+          screen — set it once and forget it.
+        </p>
+
+        <div class="field">
+          <label class="toggle" for="fallbackEnabled">
+            <input id="fallbackEnabled" type="checkbox" />
+            <span>Say something when an answer fails</span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label>How it responds</label>
+          <div class="choices" id="fallbackMode">
+            <button type="button" data-mode="speak">
+              Speak it<small>Avatar says the line out loud</small>
+            </button>
+            <button type="button" data-mode="text">
+              Show it only<small>Subtitle only — use if audio is the problem</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label for="fallbackAr">Arabic</label>
+            <textarea id="fallbackAr" dir="rtl" style="min-height: 84px"></textarea>
+          </div>
+          <div class="field">
+            <label for="fallbackEn">English</label>
+            <textarea id="fallbackEn" style="min-height: 84px"></textarea>
+          </div>
+        </div>
+
+        <p class="hint">
+          Keep it short and point at a human. A visitor who is told where to go has been
+          helped; one who is told "an error occurred" has not.
+        </p>
+      </div>
+
+      <!-- -------------------------------------------------------- summary -->
+      <div class="card section">
+        <h2>Right now</h2>
+        <div class="preview" id="preview"></div>
+      </div>
+
+      <div class="savebar">
+        <button id="save">Save changes</button>
+        <button id="revert" class="secondary">Undo my edits</button>
+        <div class="spacer"></div>
+        <span class="status" id="status"></span>
+        <button id="restore" class="secondary">Restore defaults</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/admin.js"></script>
+  </body>
+</html>

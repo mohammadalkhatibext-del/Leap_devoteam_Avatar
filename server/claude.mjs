@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { loadCorpus } from "./corpus.mjs";
-import { SYSTEM_PROMPT } from "./system-prompt.mjs";
+import { buildSystemPrompt, buildLanguageDirective } from "./system-prompt.mjs";
+import { getSettings } from "./settings.mjs";
 
 /**
  * Sonnet 5, not Opus: the work here is retrieval and phrasing over a corpus already
@@ -12,9 +13,20 @@ const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
 
 const client = new Anthropic();
 
-/** Loaded once per process — the corpus never changes at runtime. */
-let corpusPromise = null;
-const corpus = () => (corpusPromise ??= loadCorpus());
+/**
+ * Cached per operator-notes value. The knowledge base itself never changes at
+ * runtime, but the admin page can add notes to it, and those must take effect on the
+ * next question rather than on the next restart — a booth operator adding "our demo
+ * is at 3pm" expects the avatar to know it immediately.
+ */
+let corpusCache = { key: null, value: null };
+function corpus(settings) {
+  const key = settings.extraKnowledge ?? "";
+  if (corpusCache.key !== key) {
+    corpusCache = { key, value: loadCorpus({ extraKnowledge: key }) };
+  }
+  return corpusCache.value;
+}
 
 /**
  * Arabic sentence enders. `،` (Arabic comma) is deliberately absent — it is a comma,
@@ -81,15 +93,18 @@ const stripTags = (s) => s.replace(/<\/?[^>\n]{1,60}>/g, "").replace(/\s{2,}/g, 
  *
  * @param {Array} history  Plain [{role, content: string}] turns, oldest first.
  */
-function buildMessages(blocks, question, history) {
+function buildMessages(blocks, question, history, directive) {
+  // The language directive sits with the question, after the documents — see
+  // buildLanguageDirective for why it must not live in the system prompt.
+  const asked = `${directive}\n${question}`;
   if (!history.length) {
-    return [{ role: "user", content: [...blocks, { type: "text", text: question }] }];
+    return [{ role: "user", content: [...blocks, { type: "text", text: asked }] }];
   }
   const [first, ...rest] = history;
   return [
     { role: "user", content: [...blocks, { type: "text", text: first.content }] },
     ...rest,
-    { role: "user", content: question },
+    { role: "user", content: asked },
   ];
 }
 
@@ -122,10 +137,17 @@ function looksLikeSourceLeak(answer, question) {
  * @param {object} [opts]
  * @param {(s: string) => void} [opts.onSentence]  Called per complete sentence, as it streams.
  * @param {Array}  [opts.history]     Prior [{role, content}] turns for follow-ups.
+ * @param {"ar"|"en"} [opts.defaultLanguage]   which screen the visitor walked up to
+ * @param {"ar"|"en"|null} [opts.spokenLanguage]  what STT detected, when known
  */
-export async function ask(question, { onSentence, history = [] } = {}) {
-  const { blocks } = await corpus();
+export async function ask(
+  question,
+  { onSentence, history = [], defaultLanguage = "ar", spokenLanguage = null } = {},
+) {
+  const settings = await getSettings();
+  const { blocks } = await corpus(settings);
   const sentencer = onSentence ? new Sentencer((s) => onSentence(stripTags(s))) : null;
+  const directive = buildLanguageDirective({ defaultLanguage, spokenLanguage });
 
   const startedAt = Date.now();
   let firstTokenMs = null;
@@ -142,9 +164,13 @@ export async function ask(question, { onSentence, history = [] } = {}) {
     thinking: { type: "disabled" },
     output_config: { effort: process.env.CLAUDE_EFFORT || "medium" },
     system: [
-      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: buildSystemPrompt({ settings }),
+        cache_control: { type: "ephemeral" },
+      },
     ],
-    messages: buildMessages(blocks, question, history),
+    messages: buildMessages(blocks, question, history, directive),
   });
 
   stream.on("text", (delta) => {

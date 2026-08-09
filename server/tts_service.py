@@ -114,6 +114,33 @@ async def synth(text: str, voice: str) -> bytes:
     return trim_silence(decoded.samples.tobytes())
 
 
+BOOTH_LOCALES = ("ar-", "en-")
+
+
+async def list_voices() -> list:
+    """Arabic and English neural voices, for the admin page's picker.
+
+    Restricted to the booth's two languages — the full list is several hundred
+    entries, and an operator scrolling past Vietnamese to find Saudi Arabic is a
+    worse experience than a short list that only contains usable options.
+    """
+    out = []
+    for v in await edge_tts.list_voices():
+        name = v.get("ShortName", "")
+        if not name.startswith(BOOTH_LOCALES):
+            continue
+        out.append(
+            {
+                "id": name,
+                "language": name[:2],
+                "locale": name.split("-")[1] if "-" in name else "",
+                "gender": v.get("Gender", ""),
+            }
+        )
+    out.sort(key=lambda v: (v["language"] != "ar", v["id"]))
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -131,6 +158,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._json(200, {"ok": True, "sampleRate": SAMPLE_RATE, "voice": DEFAULT_VOICE})
+        elif self.path.startswith("/voices"):
+            # Powers the admin page's voice picker, so a booth operator chooses from
+            # real voices rather than typing an id they'd have to look up.
+            try:
+                self._json(200, {"voices": asyncio.run(list_voices())})
+            except Exception as err:
+                self._json(502, {"error": f"{type(err).__name__}: {err}"})
         else:
             self._json(404, {"error": "not found"})
 

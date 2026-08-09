@@ -8,9 +8,9 @@
     "ask": "node scripts/ask.mjs",
     "speak": "node scripts/speak.mjs",
     "check:anam": "node scripts/check-anam.mjs",
+    "check:simli": "node scripts/check-simli.mjs",
     "check:stt": "node scripts/stt-check.mjs",
     "harness": "npm --prefix harness run dev",
-    "check:anam": "node scripts/check-anam.mjs",
     "postinstall": "npm --prefix harness install --no-audit --no-fund"
   },
   "dependencies": {

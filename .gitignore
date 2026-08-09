@@ -2,6 +2,12 @@
 .env.local
 node_modules/
 out/
+
+# Operator settings written by the admin page. Runtime state, not source: it is
+# per-booth, it changes while the event is running, and committing it would let one
+# machine's edits overwrite another's. DEFAULTS in server/settings.mjs is the
+# tested baseline every booth starts from.
+data/
 dist/
 __pycache__/
 .next/

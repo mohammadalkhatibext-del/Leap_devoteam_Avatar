@@ -79,6 +79,9 @@
       <div>
         <div class="card hero">
           <video id="avatar" autoplay playsinline></video>
+          <!-- Simli returns its audio as a separate WebRTC track and needs a real
+               element to play it through; the other renderers ignore this. -->
+          <audio id="avatar-audio" autoplay></audio>
           <div class="placeholder" id="placeholder">not connected</div>
         </div>
 
@@ -87,6 +90,8 @@
           <select id="renderer">
             <option value="anam">Anam (audio passthrough)</option>
             <option value="heygen">HeyGen LiveAvatar (LITE)</option>
+            <option value="simli-fasttalk">Simli — fasttalk (16 kHz)</option>
+            <option value="simli-artalk">Simli — artalk (16 kHz)</option>
           </select>
 
           <label for="voice">Fixture set — same audio for every renderer</label>

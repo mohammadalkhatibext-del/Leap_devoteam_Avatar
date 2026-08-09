@@ -23,7 +23,7 @@ const question = process.argv.slice(2).join(" ") || "ما هي ديفوتيم؟"
 
 console.log(`\nvoice: ${DEFAULT_VOICE} @ ${SAMPLE_RATE} Hz`);
 console.log(await ensureTts({ log: (m) => console.log(`  ${m}`) }));
-console.log(`  prewarmed ${await prewarmFillers()} filler clips`);
+console.log(`  prewarmed ${await prewarmFillers({ ar: DEFAULT_VOICE })} filler clips`);
 
 const t0 = Date.now();
 let firstAudioMs = null;

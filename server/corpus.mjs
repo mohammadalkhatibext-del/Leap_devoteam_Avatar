@@ -33,13 +33,25 @@ function splitSections(markdown) {
  * names the section it came from ("10. Devoteam Middle East"), which is what the
  * booth staff need to check an answer. Whole-file would only give char offsets.
  */
-export async function loadCorpus() {
+export async function loadCorpus({ extraKnowledge = "" } = {}) {
   const markdown = await readFile(KB, "utf8");
   const sections = splitSections(markdown).filter(
     (s) => !INSTRUCTION_SECTIONS.has(s.number),
   );
 
   if (!sections.length) throw new Error(`no sections parsed from ${KB}`);
+
+  // Operator notes become one more citable document rather than a prompt injection.
+  // Anything the booth team adds from the admin page is then grounded and attributable
+  // exactly like the rest of the corpus — an answer that leans on it still shows a
+  // source, so staff can tell where a claim came from.
+  if (extraKnowledge.trim()) {
+    sections.push({
+      number: null,
+      title: "Booth team notes (added by the operator)",
+      text: `## Booth team notes (added by the operator)\n\n${extraKnowledge.trim()}`,
+    });
+  }
 
   const blocks = sections.map((s) => ({
     type: "document",

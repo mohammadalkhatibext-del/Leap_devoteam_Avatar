@@ -15,17 +15,16 @@ const load = (...seg) => import(pathToFileURL(path.join(ROOT, ...seg)).href);
 
 const { ask } = await load("server", "claude.mjs");
 const { transcribe } = await load("server", "deepgram.mjs");
+const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
+  "server",
+  "settings.mjs",
+);
 const { ensureTts, prewarmFillers, filler, SpeechQueue, SAMPLE_RATE } = await load(
   "server",
   "tts.mjs",
 );
 
-const readRaw = (req) =>
-  new Promise((resolve) => {
-    const parts = [];
-    req.on("data", (c) => parts.push(c));
-    req.on("end", () => resolve(Buffer.concat(parts)));
-  });
+const TTS_PORT = Number(process.env.TTS_PORT || 8765);
 
 const json = (res, code, body) => {
   res.statusCode = code;
@@ -48,6 +47,13 @@ const readBody = (req) =>
     });
   });
 
+const readRaw = (req) =>
+  new Promise((resolve) => {
+    const parts = [];
+    req.on("data", (c) => parts.push(c));
+    req.on("end", () => resolve(Buffer.concat(parts)));
+  });
+
 /**
  * Per-visitor conversation state, in memory.
  *
@@ -59,16 +65,56 @@ const readBody = (req) =>
 const sessions = new Map();
 const historyFor = (sid) => sessions.get(sid) ?? [];
 
+const voiceFor = (settings, language) =>
+  language === "en" ? settings.voiceEn : settings.voiceAr;
+
+async function warmFillers(settings) {
+  return prewarmFillers({ ar: settings.voiceAr, en: settings.voiceEn });
+}
+
 function boothApi() {
   return {
     name: "booth-api",
     async configureServer(server) {
+      const info = (m) => server.config.logger.info(`  ${m}`);
+
+      /**
+       * Last line of defence for an unattended kiosk.
+       *
+       * A booth runs for three days with nobody watching the terminal. One stray
+       * rejected promise anywhere in this file would otherwise take the whole server
+       * down and leave a dead screen on the stand — which is exactly what happened
+       * when the TTS sidecar died mid-answer. Log it and keep serving.
+       */
+      process.on("unhandledRejection", (err) => {
+        server.config.logger.error(`  unhandled rejection (kept running): ${err?.message ?? err}`);
+      });
+
       // Start the TTS sidecar and render the filler clips before the first visitor,
       // so nobody pays that cost standing at the booth.
-      ensureTts({ log: (m) => server.config.logger.info(`  ${m}`) })
-        .then(() => prewarmFillers())
-        .then((n) => server.config.logger.info(`  TTS ready — ${n} filler clips warm`))
-        .catch((err) => server.config.logger.error(`  TTS unavailable: ${err.message}`));
+      const startTts = () =>
+        ensureTts({ log: info })
+          .then(async () => warmFillers(await getSettings()))
+          .then((n) => info(`TTS ready — ${n} filler clips warm`))
+          .catch((err) => server.config.logger.error(`  TTS unavailable: ${err.message}`));
+
+      startTts();
+
+      // The sidecar is a separate process and can die during an event. Nobody is
+      // watching, so bring it back rather than waiting for someone to notice the
+      // avatar has gone quiet.
+      setInterval(async () => {
+        try {
+          const r = await fetch(`http://127.0.0.1:${TTS_PORT}/health`, {
+            signal: AbortSignal.timeout(1500),
+          });
+          if (r.ok) return;
+        } catch {
+          /* fall through to restart */
+        }
+        server.config.logger.warn("  TTS sidecar not responding — restarting it");
+        startTts();
+      }, 20_000).unref?.();
 
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url, "http://localhost");
@@ -78,19 +124,62 @@ function boothApi() {
           if (url.pathname === "/api/anam/token" && req.method === "POST") {
             const key = process.env.ANAM_API_KEY;
             if (!key) return json(res, 400, { error: "ANAM_API_KEY not set in .env" });
+            const settings = await getSettings();
 
             const r = await fetch("https://api.anam.ai/v1/auth/session-token", {
               method: "POST",
               headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
               body: JSON.stringify({
                 personaConfig: {
-                  name: "Devoteam LEAP",
-                  avatarId: process.env.ANAM_AVATAR_ID,
+                  name: settings.profileName || "Devoteam LEAP",
+                  avatarId: settings.avatarId || process.env.ANAM_AVATAR_ID,
                   enableAudioPassthrough: true,
                 },
               }),
             });
             return json(res, r.ok ? 200 : r.status, await r.json().catch(() => ({})));
+          }
+
+          // ---- settings: what the operator can change ------------------------
+          if (url.pathname === "/api/settings") {
+            if (req.method === "GET") return json(res, 200, await getSettings());
+            if (req.method === "POST") {
+              const saved = await saveSettings(await readBody(req));
+              // Voices may have changed; re-render the fillers so the next visitor
+              // hears the new voice rather than a cached clip of the old one.
+              warmFillers(saved).catch(() => {});
+              return json(res, 200, saved);
+            }
+          }
+
+          if (url.pathname === "/api/settings/reset" && req.method === "POST") {
+            const saved = await resetSettings();
+            warmFillers(saved).catch(() => {});
+            return json(res, 200, saved);
+          }
+
+          if (url.pathname === "/api/settings/defaults") {
+            return json(res, 200, DEFAULTS);
+          }
+
+          // ---- pickers for the admin page ------------------------------------
+          if (url.pathname === "/api/avatars") {
+            const key = process.env.ANAM_API_KEY;
+            if (!key) return json(res, 200, { data: [] });
+            const r = await fetch("https://api.anam.ai/v1/avatars", {
+              headers: { Authorization: `Bearer ${key}` },
+            });
+            const body = await r.json().catch(() => ({}));
+            return json(res, 200, { data: body.data ?? [] });
+          }
+
+          if (url.pathname === "/api/voices") {
+            try {
+              const r = await fetch(`http://127.0.0.1:${TTS_PORT}/voices`);
+              return json(res, 200, await r.json());
+            } catch {
+              return json(res, 200, { voices: [] }); // sidecar down — admin still loads
+            }
           }
 
           // ---- speech to text -------------------------------------------------
@@ -99,10 +188,13 @@ function boothApi() {
             const audio = await readRaw(req);
             if (!audio.length) return json(res, 400, { error: "empty audio" });
             try {
-              const r = await transcribe(audio, {
-                contentType: req.headers["content-type"] || "audio/webm",
-              });
-              return json(res, 200, r);
+              return json(
+                res,
+                200,
+                await transcribe(audio, {
+                  contentType: req.headers["content-type"] || "audio/webm",
+                }),
+              );
             } catch (err) {
               return json(res, 502, { error: err.message });
             }
@@ -119,10 +211,17 @@ function boothApi() {
           if (url.pathname === "/api/ask") {
             const question = url.searchParams.get("q")?.trim();
             const sid = url.searchParams.get("sid") || "default";
+            const defaultLanguage = url.searchParams.get("lang") === "en" ? "en" : "ar";
+            const spoken = url.searchParams.get("spoken");
+            const spokenLanguage = spoken === "ar" || spoken === "en" ? spoken : null;
             if (!question) return json(res, 400, { error: "q is required" });
 
+            const settings = await getSettings();
+            const answerLanguage = spokenLanguage || defaultLanguage;
+            const voice = voiceFor(settings, answerLanguage);
+
             res.writeHead(200, {
-              "content-type": "text/event-stream",
+              "content-type": "text/event-stream; charset=utf-8",
               "cache-control": "no-cache",
               connection: "keep-alive",
             });
@@ -135,7 +234,7 @@ function boothApi() {
             // sentence another ~1 s to synthesise; without this the avatar stands
             // frozen for three seconds, which visitors read as a crash rather than
             // as thinking.
-            const ack = filler();
+            const ack = filler({ language: answerLanguage, voice });
             if (ack) {
               send("audio", {
                 index: -1,
@@ -145,13 +244,17 @@ function boothApi() {
               });
             }
 
-            const queue = new SpeechQueue((pcm, { index, text }) => {
-              send("audio", { index, text, pcm: pcm.toString("base64") });
-            });
+            const queue = new SpeechQueue(
+              (pcm, { index, text }) =>
+                send("audio", { index, text, pcm: pcm.toString("base64") }),
+              { voice },
+            );
 
             try {
               const result = await ask(question, {
                 history: historyFor(sid),
+                defaultLanguage,
+                spokenLanguage,
                 onSentence: (s) => {
                   send("sentence", { text: s });
                   queue.push(s);
@@ -179,11 +282,34 @@ function boothApi() {
                 citations: result.citations,
                 grounded: result.grounded,
                 leakedSource: result.leakedSource,
+                language: answerLanguage,
                 timing: { ...result.timing, wallMs: Date.now() - t0 },
                 usage: result.usage,
               });
             } catch (err) {
-              send("failed", { error: err.message });
+              server.config.logger.error(`  ask failed: ${err.message}`);
+
+              // The operator's fallback line, spoken in the visitor's language, so a
+              // backend failure still looks like a person saying sorry rather than a
+              // frozen face. See STRATEGY.md §5.
+              const fb = settings.fallback;
+              if (fb?.enabled) {
+                const text = answerLanguage === "en" ? fb.messageEn : fb.messageAr;
+                send("sentence", { text });
+                if (fb.mode === "speak") {
+                  try {
+                    const q2 = new SpeechQueue(
+                      (pcm, meta) => send("audio", { ...meta, pcm: pcm.toString("base64") }),
+                      { voice },
+                    );
+                    q2.push(text);
+                    await q2.drain();
+                  } catch {
+                    /* audio itself is down — the text above is all we can offer */
+                  }
+                }
+              }
+              send("failed", { error: err.message, fallback: fb?.enabled ?? false });
             }
             return res.end();
           }
@@ -201,5 +327,13 @@ export default defineConfig({
   root: BOOTH,
   plugins: [boothApi()],
   define: { __SAMPLE_RATE__: SAMPLE_RATE },
+  build: {
+    rollupOptions: {
+      input: {
+        booth: path.join(BOOTH, "index.html"),
+        admin: path.join(BOOTH, "admin.html"),
+      },
+    },
+  },
   server: { port: 5174, open: true, fs: { allow: [ROOT] } },
 });

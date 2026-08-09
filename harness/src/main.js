@@ -2,8 +2,14 @@ import phrasesFile from "../../fixtures/phrases.ar.json";
 import { parseWav } from "./wav.js";
 import { anamAdapter } from "./adapters/anam.js";
 import { heygenAdapter } from "./adapters/heygen.js";
+import { simliFasttalkAdapter, simliArtalkAdapter } from "./adapters/simli.js";
 
-const ADAPTERS = { anam: anamAdapter, heygen: heygenAdapter };
+const ADAPTERS = {
+  anam: anamAdapter,
+  heygen: heygenAdapter,
+  "simli-fasttalk": simliFasttalkAdapter,
+  "simli-artalk": simliArtalkAdapter,
+};
 /** The three phrases that actually separate vendors — see README. */
 const KEY_PHRASES = new Set(["02", "04", "07"]);
 
@@ -80,10 +86,15 @@ async function play(p) {
     if (!res.ok) throw new Error(`fixture ${p.id}.wav not found — render it first`);
     const { pcm, sampleRate, durationMs } = parseWav(await res.arrayBuffer());
 
+    // Any client-side conversion a renderer needs (Simli resamples 24 → 16 kHz) runs
+    // BEFORE the clock starts. That cost is ours, not the vendor's, and folding it into
+    // the latency column would make whichever renderer needs it look slower than it is.
+    const ready = adapter.prepare ? adapter.prepare(pcm, sampleRate, ctx) : { pcm, sampleRate };
+
     // Time-to-first-mouth-movement is the number a visitor actually feels.
     // We can only measure send-to-ack here; watch the video for the real thing.
     const t0 = performance.now();
-    await adapter.speak(pcm, sampleRate, ctx);
+    await adapter.speak(ready.pcm, ready.sampleRate, ctx);
     const sent = Math.round(performance.now() - t0);
 
     $(`ms-${p.id}`).textContent = `${sent} ms`;

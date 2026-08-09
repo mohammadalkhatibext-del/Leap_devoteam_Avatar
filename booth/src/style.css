@@ -1,0 +1,225 @@
+/* Devoteam tokens — DEVOTEAM_BRAND_DESIGN.md §10.1.
+   Both themes define the full palette, so no colour is ever left to inherit. */
+
+:root,
+:root[data-theme="dark"] {
+  --dv-poppy: #f8485e;
+  --dv-poppy-ink: #d6334a;
+  --dv-fresh-mint: #5ab891;
+  --dv-intense-fire: #fcc354;
+
+  --surface-base: #141413;
+  --surface-1: #1e1e1d;
+  --surface-2: #2a2a28;
+  --surface-sunken: #0d0d0c;
+  --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.72);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-soft: rgba(255, 255, 255, 0.07);
+  --shadow: none;
+}
+
+:root[data-theme="light"] {
+  --dv-poppy: #f8485e;
+  --dv-poppy-ink: #d6334a;
+  --dv-fresh-mint: #2f8f68;
+  --dv-intense-fire: #b8860b;
+
+  --surface-base: #f4f2ef;
+  --surface-1: #ffffff;
+  --surface-2: #eceae6;
+  --surface-sunken: #e6e3de;
+  --text: #141413;
+  --text-muted: rgba(20, 20, 19, 0.66);
+  --border: rgba(20, 20, 19, 0.16);
+  --border-soft: rgba(20, 20, 19, 0.08);
+  --shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
+}
+
+:root {
+  --radius-card: 15px;
+  --radius-button: 12px;
+  --radius-hero: 25px;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  padding: 20px;
+  background: var(--surface-base);
+  color: var(--text);
+  font: 400 17px/1.6 "Montserrat", "Segoe UI", Tahoma, Arial, sans-serif;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+/* ---------------------------------------------------------------- topbar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.topbar .logo {
+  height: 100px;
+  width: auto;
+  flex: none;
+}
+.topbar .spacer {
+  flex: 1;
+}
+.topbar h1 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.topbar .where {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.chip:hover {
+  border-color: var(--dv-poppy);
+}
+a.chip {
+  text-decoration: none;
+}
+
+/* ----------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+label,
+.label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  border-radius: var(--radius-button);
+}
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.55;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--dv-poppy);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 11px 20px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: var(--dv-poppy-ink);
+  color: #fff;
+}
+button:hover:not(:disabled) {
+  background: #bd2c41;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+button.secondary:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------- log */
+
+#log {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.72rem;
+  direction: ltr;
+  text-align: left;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-card);
+  padding: 10px 12px;
+  height: 104px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+#log .err {
+  color: var(--dv-poppy);
+}
+.metrics {
+  font-variant-numeric: tabular-nums;
+  color: var(--dv-fresh-mint);
+  font-size: 0.78rem;
+  direction: ltr;
+  text-align: left;
+  margin-top: 8px;
+}

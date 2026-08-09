@@ -3,173 +3,148 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ديفوتيم — LEAP</title>
+    <title>Devoteam — LEAP</title>
+    <link rel="icon" href="/brand/devoteam-color.svg" />
+    <!-- Set the surface before first paint so the booth never flashes the wrong theme. -->
+    <script>
+      document.documentElement.setAttribute(
+        "data-theme",
+        localStorage.getItem("devoteam-theme") || "dark",
+      );
+    </script>
     <style>
-      /* Devoteam tokens — DEVOTEAM_BRAND_DESIGN.md §10.1. Dark surface per §8.1:
-         no brand photography is available, so neon on deep neutral is the on-brand look. */
-      :root {
-        --dv-poppy: #f8485e;
-        --dv-poppy-ink: #d6334a;
-        --dv-surface-base: #141413;
-        --dv-surface-1: #1e1e1d;
-        --dv-surface-2: #2a2a28;
-        --dv-fresh-mint: #5ab891;
-        --dv-intense-fire: #fcc354;
-        --dv-radius-card: 15px;
-        --dv-radius-button: 12px;
-        --dv-radius-hero: 25px;
-        --dv-text: #fff;
-        --dv-text-muted: rgba(255, 255, 255, 0.72);
-      }
-      * { box-sizing: border-box; }
-      html, body { height: 100%; }
-      body {
-        margin: 0;
-        padding: 24px;
-        background: var(--dv-surface-base);
-        color: var(--dv-text);
-        font: 400 17px/1.6 "Montserrat", "Segoe UI", Tahoma, Arial, sans-serif;
-      }
-
+      /* `min-height`, not `height`: on a short screen a fixed height silently clips
+         the log and sources cards instead of letting the page scroll. The booth panel
+         is tall, but the laptop it gets configured on is not. */
       .layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-        gap: 24px;
-        height: calc(100vh - 48px);
+        grid-template-columns: minmax(0, 1.3fr) minmax(330px, 0.7fr);
+        gap: 20px;
+        min-height: calc(100vh - 130px);
       }
-      @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; height: auto; } }
+      @media (max-width: 1040px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      /* Keep the avatar looking like a person rather than a letterbox when the
+         column is much taller or shorter than the video. */
+      .stage { min-height: 420px; aspect-ratio: 16 / 10; }
 
-      .card { background: var(--dv-surface-1); border-radius: var(--dv-radius-card); padding: 20px; }
-      .stage {
-        border-radius: var(--dv-radius-hero);
+      /* `.card.stage`, not `.stage`: style.css is imported from main.js and so lands
+         after this block, which means a bare `.stage` loses to `.card` on order and
+         the video area renders as a light panel — with white placeholder text on it,
+         invisible. The stage is always black because it is video, in either theme. */
+      .card.stage {
+        border-radius: var(--radius-hero);
         background: #000;
+        border-color: transparent;
         position: relative;
         overflow: hidden;
-        display: flex;
-        flex-direction: column;
+        padding: 0;
       }
       video { width: 100%; height: 100%; object-fit: cover; display: block; }
       .placeholder {
         position: absolute; inset: 0; display: grid; place-items: center;
-        color: var(--dv-text-muted); font-size: 0.9rem; text-align: center; padding: 24px;
+        color: rgba(255,255,255,.72); font-size: .9rem; text-align: center; padding: 24px;
       }
 
-      /* What the avatar is saying, over the video — a noisy hall means some visitors
-         will read rather than hear. */
+      /* Subtitles over the video: a hall is loud, and some visitors will read
+         rather than hear. */
       .subtitle {
         position: absolute; inset-inline: 0; bottom: 0;
-        padding: 20px 28px 26px;
-        background: linear-gradient(to top, rgba(0,0,0,.88), rgba(0,0,0,0));
+        padding: 20px 28px 26px; color: #fff;
+        background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,0));
         font-size: 1.35rem; line-height: 1.5; min-height: 96px;
       }
       .subtitle:empty { background: none; }
 
       .badge {
-        position: absolute; inset-inline-start: 20px; top: 20px;
+        position: absolute; inset-inline-start: 18px; top: 18px;
         display: inline-flex; align-items: center; gap: 8px;
-        font-size: 0.75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+        font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
         padding: 6px 12px; border-radius: 999px;
-        background: rgba(0,0,0,.55); color: var(--dv-text-muted);
+        background: rgba(0,0,0,.6); color: rgba(255,255,255,.8);
       }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #777; }
       .dot.live { background: var(--dv-fresh-mint); }
       .dot.busy { background: var(--dv-intense-fire); }
 
-      h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -.015em; margin: 0 0 2px; }
-      .sub { color: var(--dv-text-muted); font-size: .85rem; margin: 0 0 18px; }
-
       .side { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
 
-      label { display: block; font-size: .7rem; font-weight: 600; text-transform: uppercase;
-              letter-spacing: .06em; color: var(--dv-text-muted); margin: 0 0 8px; }
-      input[type="text"], button { font-family: inherit; font-size: 1rem; border-radius: var(--dv-radius-button); }
-      input[type="text"] {
-        width: 100%; padding: 13px 15px; background: var(--dv-surface-2);
-        color: var(--dv-text); border: 1px solid rgba(255,255,255,.15);
-      }
-      input[type="text"]:focus { outline: 2px solid var(--dv-poppy); outline-offset: 1px; }
-      .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-      button {
-        padding: 11px 20px; font-weight: 600; border: none; cursor: pointer;
-        background: var(--dv-poppy-ink); color: #fff;
-      }
-      button:hover:not(:disabled) { background: #bd2c41; }
-      button:disabled { opacity: .4; cursor: not-allowed; }
-      button.secondary { background: transparent; color: var(--dv-text); border: 1px solid rgba(255,255,255,.25); }
-
-      /* Push-to-talk is the primary control, so it gets the size and the brand colour;
-         typing is the fallback for a hall too loud to speak over. */
+      /* Push-to-talk is the primary control, so it gets the size and the brand
+         colour; typing is the fallback for a hall too loud to speak over. */
       .talk {
-        width: 100%; margin-top: 20px; padding: 18px 20px;
+        width: 100%; margin-top: 18px; padding: 18px 20px;
         display: flex; flex-direction: column; align-items: center; gap: 12px;
-        font-size: 1.1rem; background: var(--dv-poppy); border-radius: var(--dv-radius-card);
+        font-size: 1.1rem; background: var(--dv-poppy); border-radius: var(--radius-card);
       }
       .talk:hover:not(:disabled) { background: #e33a51; }
-      .talk.listening { background: var(--dv-fresh-mint); color: #0d2b20; }
+      .talk.listening { background: var(--dv-fresh-mint); color: #06281c; }
       .meter { width: 100%; height: 5px; border-radius: 3px; background: rgba(0,0,0,.28); overflow: hidden; }
       .meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width .08s linear; }
 
       .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
       .suggest button {
         font-size: .85rem; font-weight: 400; padding: 7px 13px;
-        background: var(--dv-surface-2); border: 1px solid rgba(255,255,255,.1);
+        background: var(--surface-2); color: var(--text); border: 1px solid var(--border-soft);
       }
+      .suggest button:hover { background: var(--surface-sunken); }
 
       .panel { flex: 1; min-height: 0; overflow-y: auto; }
       .cite { border-inline-start: 3px solid var(--dv-poppy); padding: 2px 12px; margin-bottom: 14px; }
-      .cite b { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
-                color: var(--dv-poppy); font-weight: 700; margin-bottom: 3px; }
-      .cite span { font-size: .82rem; color: var(--dv-text-muted); }
-      .empty { color: var(--dv-text-muted); font-size: .85rem; }
-
-      #log {
-        font-family: ui-monospace, Consolas, monospace; font-size: .72rem; direction: ltr; text-align: left;
-        color: var(--dv-text-muted); background: #0d0d0c; border-radius: var(--dv-radius-card);
-        padding: 10px 12px; height: 110px; overflow-y: auto; white-space: pre-wrap;
+      .cite b {
+        display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+        color: var(--dv-poppy); font-weight: 700; margin-bottom: 3px;
       }
-      #log .err { color: var(--dv-poppy); }
-      .metrics { font-variant-numeric: tabular-nums; color: var(--dv-fresh-mint); font-size: .78rem;
-                 direction: ltr; text-align: left; margin-top: 8px; }
+      .cite span { font-size: .82rem; color: var(--text-muted); }
     </style>
   </head>
   <body>
+    <header class="topbar">
+      <img class="logo" data-logo src="/brand/devoteam-color-on-dark.svg" alt="Devoteam" />
+      <div>
+        <h1 data-t="title">مساعد ديفوتيم</h1>
+        <div class="where" data-t="subtitle">LEAP — الرياض</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="chip" id="langBtn" data-t="switchLang">English</button>
+      <button class="chip" id="themeBtn">◐</button>
+      <a class="chip" id="adminLink" href="/admin.html" data-t="admin">الإعدادات</a>
+    </header>
+
     <div class="layout">
       <div class="card stage">
-        <div class="badge"><span class="dot" id="dot"></span><span id="state">غير متصل</span></div>
+        <div class="badge"><span class="dot" id="dot"></span><span id="state" data-t="notConnected">غير متصل</span></div>
         <video id="avatar" autoplay playsinline></video>
-        <div class="placeholder" id="placeholder">اضغط «تشغيل» لبدء الجلسة</div>
+        <div class="placeholder" id="placeholder"></div>
         <div class="subtitle" id="subtitle"></div>
       </div>
 
       <div class="side">
         <div class="card">
-          <h1>مساعد ديفوتيم</h1>
-          <p class="sub">LEAP — الرياض</p>
-
           <div class="row">
-            <button id="connect">تشغيل</button>
-            <button id="interrupt" class="secondary" disabled>إيقاف الكلام</button>
-            <button id="reset" class="secondary" disabled>زائر جديد</button>
+            <button id="connect" data-t="connect">تشغيل</button>
+            <button id="interrupt" class="secondary" data-t="stopSpeaking" disabled>إيقاف الكلام</button>
+            <button id="reset" class="secondary" data-t="newVisitor" disabled>زائر جديد</button>
           </div>
 
           <button id="talk" class="talk" disabled>
-            <span id="talkLabel">🎤 اضغط وتحدّث</span>
+            <span id="talkLabel" data-t="talk">🎤 اضغط وتحدّث</span>
             <span class="meter"><i id="meterFill"></i></span>
           </button>
 
-          <label for="q" style="margin-top:18px">أو اكتب سؤالك</label>
-          <input id="q" type="text" placeholder="ما هي ديفوتيم؟" autocomplete="off" disabled />
+          <label for="q" style="margin-top: 18px" data-t="orType">أو اكتب سؤالك</label>
+          <input id="q" type="text" data-t-placeholder="placeholder" autocomplete="off" disabled />
 
           <div class="suggest" id="suggest"></div>
         </div>
 
         <div class="card panel">
-          <label>المصادر</label>
-          <div id="citations"><p class="empty">تظهر هنا المصادر التي استند إليها الجواب.</p></div>
+          <div class="label" data-t="sources">المصادر</div>
+          <div id="citations"></div>
         </div>
 
         <div class="card">
-          <label>سجل</label>
+          <div class="label" data-t="log">سجل</div>
           <div id="log"></div>
           <div class="metrics" id="metrics"></div>
         </div>

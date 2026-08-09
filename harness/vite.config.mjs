@@ -75,6 +75,38 @@ function harnessApi() {
             return json(res, r.ok ? 200 : r.status, body);
           }
 
+          // ---- Simli: mint a session token (audio-to-video) ------------------
+          if (url.pathname === "/api/simli/token" && req.method === "POST") {
+            const key = process.env.SIMLI_API_KEY;
+            if (!key) return json(res, 400, { error: "SIMLI_API_KEY not set in .env" });
+
+            const faceId = process.env.SIMLI_FACE_ID;
+            if (!faceId) return json(res, 400, { error: "SIMLI_FACE_ID not set in .env" });
+
+            const body = await new Promise((resolve) => {
+              let raw = "";
+              req.on("data", (c) => (raw += c));
+              req.on("end", () => { try { resolve(JSON.parse(raw || "{}")); } catch { resolve({}); } });
+            });
+
+            const r = await fetch("https://api.simli.ai/compose/token", {
+              method: "POST",
+              headers: { "x-simli-api-key": key, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                faceId,
+                // v2 is what actually validates faceId — the older call returns 200 for
+                // a face that does not exist, and you only find out at stream time.
+                apiVersion: "v2",
+                handleSilence: true,
+                maxSessionLength: 600,
+                maxIdleTime: 300,
+                ...(body.model ? { model: body.model } : {}),
+              }),
+            });
+            const tokenBody = await r.json().catch(() => ({}));
+            return json(res, r.ok ? 200 : r.status, tokenBody);
+          }
+
           // ---- HeyGen LiveAvatar LITE: token, then start -> livekit + ws ----
           if (url.pathname === "/api/heygen/session" && req.method === "POST") {
             const key = process.env.HEYGEN_API_KEY;

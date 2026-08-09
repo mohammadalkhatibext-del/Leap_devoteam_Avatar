@@ -88,6 +88,36 @@ elevenlabs`) but both are card-blocked, so nobody can run them yet. `render-edge
 reaches the *same* Microsoft neural voices without a key, which is why the Phase 0
 scores below are real despite no vendor account existing.
 
+### Sample rates: the one place the fixtures aren't identical
+
+The renderers disagree and there is no rate that satisfies all of them. HeyGen LITE
+mandates exactly 24 kHz; **Simli mandates exactly 16 kHz**; Anam takes whatever it is
+told. The fixtures are 24 kHz, so the Simli adapter resamples on the way in, using a
+windowed-sinc filter (`harness/src/wav.js`) rather than plain decimation — naive
+decimation aliases everything above 8 kHz back down onto the sibilants (س ش ص ث) that
+phrases 04 and 07 exist to test, which would mean scoring Simli down for damage the
+harness itself caused. Measured alias rejection is ~74 dB, passband flat to 6 kHz.
+
+Simli is still the one renderer not hearing the fixture bit-for-bit. Note it when
+scoring, and don't compare Simli's audio-quality impressions with the others'.
+
+### Simli
+
+Simli has no TTS of its own, so it is audio-passthrough by definition — there is no
+agent mode to fall into. It exposes two lip-sync models on the same face
+(`fasttalk` and `artalk`), which the harness lists as separate renderers because
+which one handles Arabic better is exactly the open question.
+
+```bash
+npm run check:simli    # verifies the key AND the face id before you open the harness
+```
+
+Worth knowing: **Simli returns a `session_token` field even on failure** — a 401 from
+a bad key still hands back a token-shaped string. Check the status code, never the
+token's presence. Unlike Anam, though, `/compose/token` with `apiVersion: "v2"` does
+validate the face id up front (`400 INVALID_FACE_ID`), so a green `check:simli` means
+the face is genuinely usable, not merely well-formed.
+
 Then score with [`SCORING.md`](./SCORING.md). **Step 1 (voice ranking) gates
 everything** — if the Arabic voice is wrong, no renderer saves you, and you'll have
 spent nothing to find out.
@@ -203,7 +233,8 @@ nothing else — then swapping renderers is one env var, not a rewrite.
   only working Arabic voice is `edge-tts`, an unofficial endpoint. Fine for building;
   must not be what runs on the booth floor. Quality is not the issue — it is the same
   Microsoft neural voice Azure sells.
-- **Only one renderer is reachable** (Anam). HeyGen, Simli and Tavus are all
-  card-blocked, so the backup is the `STRATEGY.md` §5 fallback, not a second vendor.
+- **Two renderers are reachable** (Anam and Simli). HeyGen and Tavus are still
+  card-blocked. Simli unblocked on 2026-08-09, so there is now a real second vendor
+  rather than only the `STRATEGY.md` §5 fallback.
 - The brand doc is written as a migration guide for the HRSD Next.js app. Use §10.1
   (token block), §2.2 (type scale) and the rules; ignore §10's migration map.

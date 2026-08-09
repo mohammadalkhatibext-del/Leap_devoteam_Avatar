@@ -1,21 +1,21 @@
+import "./style.css";
 import { avatar } from "./avatar.js";
 import { Mic } from "./mic.js";
 import { fromBase64, durationMs } from "./audio.js";
+import { currentLang, setLang, applyLang, t } from "./i18n.js";
+import { initTheme, toggleTheme } from "./theme.js";
 
 const SAMPLE_RATE = __SAMPLE_RATE__;
 const $ = (id) => document.getElementById(id);
 
-/** One booth visit. Reset when someone new walks up, so history doesn't leak between people. */
+const lang = currentLang();
+let S = t(lang); // UI strings for the page language
+
+/** One booth visit. Rotated when someone new walks up, so history never leaks between people. */
 let sessionId = crypto.randomUUID();
 let busy = false;
-
-const SUGGESTIONS = [
-  "ما هي ديفوتيم؟",
-  "هل لديكم مكاتب في السعودية؟",
-  "كيف تدعمون رؤية ٢٠٣٠؟",
-  "ما علاقتكم بجوجل كلاود؟",
-  "What does Devoteam do?",
-];
+let hasConversation = false;
+let settings = { idleResetMinutes: 5 };
 
 /* ------------------------------------------------------------------- logging */
 
@@ -29,20 +29,57 @@ function log(msg, isError = false) {
 }
 const ctx = { log };
 
-function setState(text, cls = "") {
-  $("state").textContent = text;
+function setState(key, cls = "") {
+  $("state").textContent = S[key] ?? key;
   $("dot").className = `dot ${cls}`;
+}
+
+/* --------------------------------------------------------------- idle reset */
+
+let lastActivity = Date.now();
+const touch = () => (lastActivity = Date.now());
+
+/**
+ * Clear the conversation when a visitor walks away without pressing "new visitor".
+ *
+ * They will not press it — they get their answer and leave. Without this the next
+ * person inherits a stranger's conversation: the avatar skips its greeting, answers
+ * follow-ups to a question that was never asked, and in the worst case repeats
+ * something the previous visitor said. The timeout is the operator's, from settings.
+ */
+setInterval(() => {
+  if (busy || !hasConversation) return;
+  const idleMs = Date.now() - lastActivity;
+  if (idleMs < settings.idleResetMinutes * 60_000) return;
+  newVisitor({ automatic: true });
+}, 15_000);
+
+async function newVisitor({ automatic = false } = {}) {
+  await fetch("/api/reset", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sessionId }),
+  }).catch(() => {});
+  sessionId = crypto.randomUUID();
+  hasConversation = false;
+  touch();
+  $("subtitle").textContent = automatic ? S.idleReset : "";
+  $("citations").innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
+  $("metrics").textContent = "";
+  log(automatic ? `idle ${settings.idleResetMinutes}m — conversation cleared` : "new visitor");
+  if (automatic) setTimeout(() => ($("subtitle").textContent = ""), 6000);
 }
 
 /* ------------------------------------------------------------------ ask flow */
 
-async function askQuestion(question) {
+async function askQuestion(question, spokenLanguage = null) {
   if (busy || !avatar.client) return;
   busy = true;
+  touch();
   $("q").value = "";
   $("subtitle").textContent = "";
-  $("citations").innerHTML = '<p class="empty">…</p>';
-  setState("يفكر", "busy");
+  $("citations").innerHTML = `<p class="empty">…</p>`;
+  setState("thinking", "busy");
   log(`Q: ${question}`);
 
   avatar.begin(SAMPLE_RATE, ctx);
@@ -54,16 +91,17 @@ async function askQuestion(question) {
   const speakClip = (pcm, text, isFiller) => {
     playHead = playHead.then(async () => {
       if (!isFiller) $("subtitle").textContent = text;
-      setState("يتحدث", "live");
+      setState("speaking", "live");
       avatar.push(pcm);
       await new Promise((r) => setTimeout(r, durationMs(pcm, SAMPLE_RATE)));
     });
   };
 
+  const params = new URLSearchParams({ q: question, sid: sessionId, lang });
+  if (spokenLanguage) params.set("spoken", spokenLanguage);
+
   await new Promise((resolve) => {
-    const es = new EventSource(
-      `/api/ask?q=${encodeURIComponent(question)}&sid=${encodeURIComponent(sessionId)}`,
-    );
+    const es = new EventSource(`/api/ask?${params}`);
 
     es.addEventListener("audio", (e) => {
       const { pcm, text, filler } = JSON.parse(e.data);
@@ -75,16 +113,17 @@ async function askQuestion(question) {
       renderCitations(d.citations, d.grounded);
       $("metrics").textContent =
         `first token ${d.timing.firstTokenMs}ms · answer ${d.timing.totalMs}ms · ` +
-        `cache read ${d.usage.cacheRead} · out ${d.usage.output}`;
-      log(`answered — ${d.citations.length} citations`);
+        `cache read ${d.usage.cacheRead} · out ${d.usage.output} · ${d.language}`;
+      log(`answered in ${d.language} — ${d.citations.length} citations`);
+      hasConversation = true;
       es.close();
       resolve();
     });
 
     es.addEventListener("failed", (e) => {
-      const { error } = JSON.parse(e.data);
+      const { error, fallback } = JSON.parse(e.data);
       log(`failed: ${error}`, true);
-      $("subtitle").textContent = "عذراً، حدث خطأ. تفضلوا بسؤال أحد الزملاء في الجناح.";
+      if (!fallback) $("subtitle").textContent = S.error;
       es.close();
       resolve();
     });
@@ -97,7 +136,8 @@ async function askQuestion(question) {
 
   await playHead; // let the last clip finish before returning to idle
   avatar.end();
-  setState("جاهز", "live");
+  setState("ready", "live");
+  touch();
   busy = false;
 }
 
@@ -106,9 +146,7 @@ function renderCitations(citations, grounded) {
   if (!citations?.length) {
     // Worth surfacing rather than hiding: an ungrounded answer is exactly the case
     // booth staff need to notice, because it is the one that could be wrong.
-    el.innerHTML = `<p class="empty">${
-      grounded ? "لا توجد مصادر." : "⚠ إجابة بدون مصدر — راجعها قبل الاعتماد عليها."
-    }</p>`;
+    el.innerHTML = `<p class="empty">${grounded ? S.noSources : S.ungrounded}</p>`;
     return;
   }
   el.innerHTML = "";
@@ -123,32 +161,7 @@ function renderCitations(citations, grounded) {
   }
 }
 
-/* --------------------------------------------------------------------- wiring */
-
-$("connect").onclick = async () => {
-  $("connect").disabled = true;
-  setState("جارٍ الاتصال", "busy");
-  try {
-    await avatar.connect("avatar", ctx);
-    $("placeholder").style.display = "none";
-    $("q").disabled = false;
-    $("talk").disabled = false;
-    $("interrupt").disabled = false;
-    $("reset").disabled = false;
-    $("q").focus();
-    setState("جاهز", "live");
-  } catch (err) {
-    log(`connect failed: ${err.message}`, true);
-    setState("فشل الاتصال");
-    $("connect").disabled = false;
-  }
-};
-
-$("q").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && $("q").value.trim()) askQuestion($("q").value.trim());
-});
-
-/* ------------------------------------------------------------------- speaking */
+/* --------------------------------------------------------------------- mic */
 
 const mic = new Mic();
 
@@ -157,33 +170,34 @@ $("talk").onclick = async () => {
   // never be stuck waiting for the silence timer if they want to cut it short.
   if (mic.recording) return mic.stop();
   if (busy) return;
+  touch();
 
   const btn = $("talk");
   btn.classList.add("listening");
-  $("talkLabel").textContent = "أستمع إليك…";
-  setState("يستمع", "busy");
+  $("talkLabel").textContent = S.listening;
+  setState("hearing", "busy");
 
   let clip = null;
   try {
     clip = await mic.listen({
       onLevel: (v) => ($("meterFill").style.width = `${v * 100}%`),
-      onSpeechStart: () => ($("talkLabel").textContent = "تفضّل…"),
+      onSpeechStart: () => ($("talkLabel").textContent = S.speakNow),
     });
   } catch (err) {
     log(`mic failed: ${err.message}`, true);
   } finally {
     btn.classList.remove("listening");
-    $("talkLabel").textContent = "🎤 اضغط وتحدّث";
+    $("talkLabel").textContent = S.talk;
     $("meterFill").style.width = "0%";
   }
 
   if (!clip) {
-    setState("جاهز", "live");
+    setState("ready", "live");
     log("heard nothing");
     return;
   }
 
-  setState("يكتب ما قلت", "busy");
+  setState("transcribing", "busy");
   try {
     const res = await fetch("/api/stt", {
       method: "POST",
@@ -194,48 +208,87 @@ $("talk").onclick = async () => {
     if (!res.ok) throw new Error(data.error || `stt ${res.status}`);
 
     if (!data.transcript) {
-      // Say so out loud rather than failing silently — a booth visitor staring at a
-      // motionless avatar has no way to tell "didn't hear you" from "crashed".
+      // Say so rather than failing silently — a booth visitor staring at a motionless
+      // avatar has no way to tell "didn't hear you" from "crashed".
       log("transcript empty", true);
-      $("subtitle").textContent = "ما سمعتك زين، ممكن تعيد؟";
-      setState("جاهز", "live");
+      $("subtitle").textContent = S.heardNothing;
+      setState("ready", "live");
       return;
     }
 
-    log(`heard (${data.confidence.toFixed(2)}, ${data.ms}ms): ${data.transcript}`);
+    const considered = (data.considered ?? [])
+      .map((c) => `${c.language} ${c.confidence.toFixed(2)}`)
+      .join(", ");
+    log(`heard [${data.language}] (${considered}, ${data.ms}ms): ${data.transcript}`);
     $("q").value = data.transcript;
-    await askQuestion(data.transcript);
+
+    // The language the visitor actually spoke wins over the page language.
+    await askQuestion(data.transcript, data.language);
   } catch (err) {
     log(`stt failed: ${err.message}`, true);
-    setState("جاهز", "live");
+    setState("ready", "live");
   }
 };
 
+/* ----------------------------------------------------------------- wiring */
+
+$("connect").onclick = async () => {
+  $("connect").disabled = true;
+  setState("connecting", "busy");
+  try {
+    await avatar.connect("avatar", ctx);
+    $("placeholder").style.display = "none";
+    for (const id of ["q", "talk", "interrupt", "reset"]) $(id).disabled = false;
+    $("q").focus();
+    setState("ready", "live");
+    touch();
+  } catch (err) {
+    log(`connect failed: ${err.message}`, true);
+    setState("connectFailed");
+    $("connect").disabled = false;
+  }
+};
+
+$("q").addEventListener("keydown", (e) => {
+  // A typed question carries no spoken language, so it falls back to the page's.
+  if (e.key === "Enter" && $("q").value.trim()) askQuestion($("q").value.trim());
+});
+
 $("interrupt").onclick = () => {
   avatar.interrupt();
-  setState("جاهز", "live");
+  setState("ready", "live");
+  touch();
   log("interrupted");
 };
 
-$("reset").onclick = async () => {
-  await fetch("/api/reset", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sessionId }),
-  });
-  sessionId = crypto.randomUUID();
-  $("subtitle").textContent = "";
-  $("citations").innerHTML = '<p class="empty">تظهر هنا المصادر التي استند إليها الجواب.</p>';
-  $("metrics").textContent = "";
-  log("new visitor — conversation cleared");
-};
+$("reset").onclick = () => newVisitor();
+
+$("langBtn").onclick = () => setLang(lang === "ar" ? "en" : "ar");
+$("themeBtn").onclick = () => log(`theme: ${toggleTheme()}`);
+
+for (const el of ["talk", "q", "avatar"].map($)) {
+  el?.addEventListener("pointerdown", touch);
+}
+
+/* -------------------------------------------------------------------- init */
+
+initTheme();
+S = applyLang(lang);
+$("placeholder").textContent = S.connect;
+$("citations").innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
 
 const suggest = $("suggest");
-for (const s of SUGGESTIONS) {
+for (const s of S.suggestions) {
   const b = document.createElement("button");
   b.textContent = s;
   b.onclick = () => askQuestion(s);
   suggest.appendChild(b);
 }
 
-log("ready — press تشغيل to connect");
+fetch("/api/settings")
+  .then((r) => r.json())
+  .then((s) => {
+    settings = s;
+    log(`ready — idle reset ${s.idleResetMinutes}m, voice ${lang === "en" ? s.voiceEn : s.voiceAr}`);
+  })
+  .catch(() => log("ready"));
