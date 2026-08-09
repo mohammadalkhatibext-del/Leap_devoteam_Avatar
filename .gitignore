@@ -1,7 +1,6 @@
 .env
 .env.local
 node_modules/
-fixtures/audio/
 out/
 dist/
 __pycache__/

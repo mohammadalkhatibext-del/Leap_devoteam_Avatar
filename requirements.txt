@@ -1,9 +1,11 @@
-# Python side of the pipeline. Both are used by two things:
-#   server/tts_service.py       — the TTS sidecar the booth actually speaks through
-#   scripts/render-edge-tts.py  — renders the Phase 0 fixture audio
+# Arabic TTS. Both are needed by server/tts_service.py and scripts/render-edge-tts.py.
 #
-# edge-tts reaches Microsoft's neural voices with no key and no card. It is the same
-# model Azure sells as ar-SA-HamedNeural, but it is an undocumented endpoint:
-# fine for building and for the bake-off, must not be what runs on the booth floor.
-edge-tts>=7.0.0
+# edge-tts  — reaches Microsoft's neural Arabic voices (ar-SA-HamedNeural and friends)
+#             with no API key and no credit card. Same models Azure Speech serves, so
+#             quality carries over exactly; see the provenance note in tts_service.py
+#             before shipping this path.
+# miniaudio — decodes the MP3 edge-tts returns into raw PCM. Chosen over pydub/ffmpeg
+#             because it needs no ffmpeg binary on PATH, which this machine lacks.
+
+edge-tts>=6.1
 miniaudio>=1.59

@@ -1,0 +1,92 @@
+{
+  "provider": "edge",
+  "voice": "ar-SA-ZariyahNeural",
+  "sampleRate": 24000,
+  "provenance": "EVALUATION ONLY — Edge read-aloud endpoint. Same neural voice as Azure Speech; production must use an Azure F0 key.",
+  "phrases": [
+    {
+      "id": "01",
+      "tests": "Gulf dialect greeting — the first thing every visitor hears",
+      "ar": "هلا وغلا، حياك الله في جناح ديفوتيم. كيف أقدر أساعدك اليوم؟",
+      "gloss": "Welcome, greetings — you're most welcome at the Devoteam stand. How can I help you today?",
+      "watchFor": "Dialectal 'أقدر/أساعدك' often gets MSA-ified by TTS. Listen for a stiff, newsreader delivery."
+    },
+    {
+      "id": "02",
+      "tests": "Code-switching — Latin-script tech terms inside an Arabic sentence",
+      "ar": "نقدم خدمات الحوسبة السحابية على منصات AWS و Azure و Google Cloud، مع تكامل كامل مع Kubernetes.",
+      "gloss": "We provide cloud computing services on AWS, Azure and Google Cloud, with full Kubernetes integration.",
+      "watchFor": "THE critical test. Both TTS and lip-sync break here. Check RTL/LTR handling, whether 'Azure' is spoken or spelled, and whether the mouth shape resets correctly at each script boundary."
+    },
+    {
+      "id": "03",
+      "tests": "Numbers, percentages, dates spoken in Arabic",
+      "ar": "في عام ألفين وخمسة وعشرين، حققنا انخفاضًا في التكاليف التشغيلية بنسبة خمسة وثلاثين بالمائة لدى أحد عملائنا.",
+      "gloss": "In 2025 we achieved a 35% reduction in operating costs for one of our clients.",
+      "watchFor": "Arabic numerals are read right-to-left in value order. A wrong number in a booth demo is a credibility failure, not a cosmetic one."
+    },
+    {
+      "id": "04",
+      "tests": "Long MSA sentence (35+ words) — lip-sync drift over time",
+      "ar": "تعمل ديفوتيم مع المؤسسات الحكومية والخاصة في المملكة العربية السعودية على تصميم وتنفيذ حلول الذكاء الاصطناعي التوليدي، بدءًا من دراسة الجدوى وحتى التشغيل الكامل في بيئة الإنتاج، مع الالتزام بمتطلبات حماية البيانات المحلية.",
+      "gloss": "Devoteam works with public and private organisations in Saudi Arabia to design and deliver generative AI solutions, from feasibility study through to full production operation, in line with local data protection requirements.",
+      "watchFor": "Audio/video drift. Watch the LAST five seconds, not the first. If the mouth is behind by the end, the renderer fails."
+    },
+    {
+      "id": "05",
+      "tests": "Short interjection — attack, latency, time-to-first-frame",
+      "ar": "بكل تأكيد.",
+      "gloss": "Certainly.",
+      "watchFor": "Does the renderer clip the start? How long from speak() to first mouth movement? This is the latency your visitor feels."
+    },
+    {
+      "id": "06",
+      "tests": "Second short interjection — the filler you'll use most",
+      "ar": "لحظة من فضلك.",
+      "gloss": "One moment, please.",
+      "watchFor": "Same as 05. Also: does the avatar return to a natural idle pose, or freeze mid-phoneme?"
+    },
+    {
+      "id": "07",
+      "tests": "Emphatic and pharyngeal consonants (ق ط ص ض ظ ع ح خ)",
+      "ar": "قطاع الصحة يتطلب ضبط الخصوصية وحماية السجلات الطبية بشكل صارم.",
+      "gloss": "The health sector requires strict privacy controls and protection of medical records.",
+      "watchFor": "These have no English equivalent, so English-trained visemes have nothing to map to. This is where non-Arabic-aware lip-sync visibly falls apart."
+    },
+    {
+      "id": "08",
+      "tests": "Brand name + official tagline",
+      "ar": "ديفوتيم شركة استشارات تقنية مدفوعة بالذكاء الاصطناعي.",
+      "gloss": "Devoteam is an AI-driven tech consulting company.",
+      "watchFor": "'ديفوتيم' must sound like Devoteam, not 'Deefooteem'. If the brand name is mispronounced the whole demo is off-brand. May need an SSML lexicon override."
+    },
+    {
+      "id": "09",
+      "tests": "Question intonation — rising contour",
+      "ar": "هل تود أن أشرح لك أكثر عن حلول البيانات، أو تفضل نتحدث عن الأمن السيبراني؟",
+      "gloss": "Would you like me to explain more about our data solutions, or would you prefer to talk about cybersecurity?",
+      "watchFor": "Flat intonation on a question reads as robotic. Also tests the pause at the comma — visitors interrupt there."
+    },
+    {
+      "id": "10",
+      "tests": "List with connectives — natural pausing",
+      "ar": "نغطي أربعة مجالات رئيسية: السحابة، والبيانات، والأمن السيبراني، وأتمتة الأعمال.",
+      "gloss": "We cover four main areas: cloud, data, cybersecurity, and business automation.",
+      "watchFor": "Does it pause between items or run them together? Run-on lists are unintelligible in a noisy hall."
+    },
+    {
+      "id": "11",
+      "tests": "The refusal — you will say this a LOT",
+      "ar": "لا تتوفر لدي هذه المعلومة. تفضل، أوصلك بأحد زملائي من فريق ديفوتيم.",
+      "gloss": "I don't have that information. Please, let me connect you with one of my Devoteam colleagues.",
+      "watchFor": "Must sound helpful, not curt. This is the guardrail response — if it sounds like a malfunction, visitors think the avatar is broken rather than being careful."
+    },
+    {
+      "id": "12",
+      "tests": "Gulf dialect handoff + farewell",
+      "ar": "خلني أنادي أحد المختصين عندنا في الجناح. شكرًا لزيارتك ديفوتيم في ليب، نتشرف بلقائك مرة ثانية.",
+      "gloss": "Let me call one of our specialists here at the stand. Thank you for visiting Devoteam at LEAP, we'd be honoured to see you again.",
+      "watchFor": "'خلني' and 'ثانية' are dialectal. Also the last impression a visitor takes away — check the closing idle pose."
+    }
+  ]
+}

@@ -47,9 +47,7 @@ whatever breaks tells you exactly which leg:
 ```bash
 node scripts/ask.mjs --probe             # 1. answer engine + guardrails, no audio
 node scripts/speak.mjs "ما هي ديفوتيم؟"    # 2. + TTS, writes out/answer.wav
-
-python scripts/render-edge-tts.py        # 3. fixture audio for the bake-off
-npm run harness                          # 4. avatar harness on :5173
+npm run harness                          # 3. avatar harness on :5173
 ```
 
 Step 1 is the best five minutes of onboarding available: it prints each question next
@@ -57,8 +55,11 @@ to the behaviour it *should* produce, so it doubles as the spec. Step 2 starts t
 Python TTS sidecar on `:8765` by itself — the number to watch in its output is **time
 to first audio**, not the total.
 
-Step 3 is not optional before step 4. `fixtures/audio/` is gitignored, so a fresh clone
-has no audio and the harness shows an empty voice list — that is missing input, not a bug.
+Step 3 needs no render first: the 48 fixture WAVs are **committed**, so the harness has
+its four Arabic voices straight from the clone. That is deliberate — scoring a renderer
+means every listener hears byte-identical audio, and a re-render on each machine would
+quietly break the one control the bake-off has. Only run `python scripts/render-edge-tts.py`
+to add a voice or change the phrases, and commit the result so everyone stays in sync.
 
 ---
 
@@ -68,14 +69,19 @@ Comparing avatar vendors doesn't need a working conversation — it needs *audio
 video out*. So render the Arabic test phrases **once**, then feed the **identical
 files** to every renderer. Controlled experiment, free tiers only.
 
+That render is already done and **committed** — four voices × 12 phrases in
+`fixtures/audio/edge/<voice>@24k/*.wav`, 24 kHz, 16-bit, mono, which is the common
+denominator across HeyGen Lite, Anam passthrough, Simli and Tavus echo. One render
+feeds all four renderers, and shipping the bytes rather than the script is what makes
+two people's scores comparable. Each voice folder carries a `manifest.json` with the
+phrase text, an English gloss, and what to listen for.
+
+To re-render — only needed to add a voice or edit the phrases:
+
 ```bash
-python scripts/render-edge-tts.py                     # all four voices — the path that works today
+python scripts/render-edge-tts.py                     # all four voices
 python scripts/render-edge-tts.py ar-SA-HamedNeural   # just one
 ```
-
-Output lands in `fixtures/audio/<provider>/<voice>/*.wav` — 24 kHz, 16-bit, mono,
-which is the common denominator across HeyGen Lite, Anam passthrough, Simli and
-Tavus echo. One render feeds all four.
 
 The Azure and ElevenLabs renderers exist (`node scripts/render-tts.mjs azure |
 elevenlabs`) but both are card-blocked, so nobody can run them yet. `render-edge-tts.py`
@@ -128,9 +134,19 @@ substance, Gulf dialect for the greeting and the human handoff, and the greeting
 fires once per visitor rather than once per answer.
 
 **Answers are written to be spoken, not read.** No markdown, no digits (numbers are
-spelled as Arabic words so the TTS voice pronounces them), two to four sentences,
-answer first. `ask()` streams and emits complete sentences as they form, so TTS can
-start on sentence one at ~1.2 s instead of waiting ~5 s for the full reply.
+spelled as Arabic words so the voice pronounces them), answer first, and budgeted in
+**words rather than sentences** — about thirty-five, since one long written sentence
+can run half a minute out loud. The voice speaks ~2 words/second, so that lands near
+fifteen seconds. Raise or lower the number in `server/system-prompt.mjs`.
+
+**Time to first audio is ~0 ms, and that is the number that matters.** Three things get
+it there: `ask()` streams and emits complete sentences as they form, so TTS starts on
+sentence one rather than after the full ~4.5 s reply; `SpeechQueue` synthesises
+sentences in parallel but releases them in order, so there is no TTS round-trip of
+silence between them; and a pre-rendered filler ("لحظة من فضلك") plays the instant the
+question ends, covering the rest. The sidecar also trims edge-tts's ~1.2 s of padding
+from every clip — left in, it becomes a dead gap between every sentence, which on a
+photorealistic face reads as a crash.
 
 ### Guardrails — verified, not assumed
 
