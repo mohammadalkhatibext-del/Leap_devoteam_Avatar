@@ -49,6 +49,25 @@ DEFAULT_VOICE = "ar-SA-HamedNeural"  # SCORING.md Step 1 winner — male, matche
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
+def log(msg: str) -> None:
+    """Print without ever letting logging break a request.
+
+    This sidecar deliberately outlives the process that spawned it, so that a dev
+    server restart does not interrupt a visitor mid-sentence. The consequence is that
+    its stdout pipe loses its reader the moment that parent exits — and from then on
+    every `print` raises, inside the request handler, killing the connection.
+
+    The symptom is vicious: /health has no logging so it keeps returning 200, while
+    every /tts call dies. It looks exactly like "every voice is broken" and sends you
+    hunting through the voice catalogue for a fault that is not there.
+    """
+    try:
+        print(msg, flush=True)
+    except (OSError, ValueError):
+        # Reader is gone. Nothing to do and nothing worth failing a request over.
+        pass
+
+
 SILENCE_THRESHOLD = 300  # out of 32767 — comfortably above the codec's noise floor
 FRAME_MS = 10
 KEEP_PAD_MS = 40  # leave a little air so the first consonant isn't clipped
@@ -187,11 +206,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             pcm = asyncio.run(synth(text, voice))
         except Exception as err:
-            print(f"  tts FAIL  {type(err).__name__}: {err}", flush=True)
+            log(f"  tts FAIL  {type(err).__name__}: {err}")
             return self._json(502, {"error": f"{type(err).__name__}: {err}"})
 
         secs = len(pcm) / 2 / SAMPLE_RATE
-        print(f"  tts ok  {secs:5.1f}s  {voice}  {text[:60]}", flush=True)
+        log(f"  tts ok  {secs:5.1f}s  {voice}  {text[:60]}")
 
         self.send_response(200)
         # audio/L16 is the IANA type for raw 16-bit linear PCM.

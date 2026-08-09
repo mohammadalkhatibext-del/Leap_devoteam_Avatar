@@ -17,6 +17,25 @@ export const DEFAULTS = {
   profileName: "Devoteam LEAP",
 
   /**
+   * Which renderer drives the face: "anam" | "simli" | "akool".
+   *
+   * Not cosmetic. Anam and Simli lip-sync the Arabic audio we generate; Akool has no
+   * audio input and speaks with its own voice, so switching to it silently replaces
+   * the voice ranked in SCORING.md Step 1. server/providers.mjs holds the detail and
+   * the admin page states it in the picker.
+   */
+  avatarProvider: "anam",
+
+  /** Simli: face id and lip-sync model. Empty means follow SIMLI_FACE_ID from .env. */
+  simliFaceId: "",
+  simliModel: "fasttalk",
+
+  /** Akool: avatar and its own voice, since ours is not used there. */
+  akoolAvatarId: "",
+  akoolVoiceId: "",
+  akoolLanguage: "ar",
+
+  /**
    * Anam avatar. Empty means "follow ANAM_AVATAR_ID from .env" — deliberately not
    * seeded from the environment, because doing so freezes whatever .env said the
    * first time settings were ever saved, and from then on editing .env silently does

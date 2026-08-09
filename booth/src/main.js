@@ -92,7 +92,7 @@ async function askQuestion(question, spokenLanguage = null) {
     playHead = playHead.then(async () => {
       if (!isFiller) $("subtitle").textContent = text;
       setState("speaking", "live");
-      avatar.push(pcm);
+      avatar.push(pcm, ctx);
       await new Promise((r) => setTimeout(r, durationMs(pcm, SAMPLE_RATE)));
     });
   };
@@ -103,7 +103,20 @@ async function askQuestion(question, spokenLanguage = null) {
   await new Promise((resolve) => {
     const es = new EventSource(`/api/ask?${params}`);
 
+    es.addEventListener("sentence", (e) => {
+      // Text-mode renderers (Akool) speak our text in their own voice — there is no
+      // audio to push, so the sentence itself is the payload and the subtitle is
+      // driven from here rather than from clip playback.
+      if (avatar.mode !== "text") return;
+      const { text } = JSON.parse(e.data);
+      $("subtitle").textContent = text;
+      setState("speaking", "live");
+      avatar.say(text, ctx);
+    });
+
     es.addEventListener("audio", (e) => {
+      // Our TTS is unused in text mode; ignore the clips rather than double-speaking.
+      if (avatar.mode === "text") return;
       const { pcm, text, filler } = JSON.parse(e.data);
       speakClip(fromBase64(pcm), text, filler);
     });

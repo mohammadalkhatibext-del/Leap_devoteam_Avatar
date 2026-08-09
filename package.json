@@ -10,12 +10,15 @@
     "check:anam": "node scripts/check-anam.mjs",
     "check:simli": "node scripts/check-simli.mjs",
     "check:stt": "node scripts/stt-check.mjs",
+    "check:voices": "node scripts/voice-check.mjs",
     "harness": "npm --prefix harness run dev",
     "postinstall": "npm --prefix harness install --no-audit --no-fund"
   },
   "dependencies": {
     "@anam-ai/js-sdk": "^4.0.0",
-    "@anthropic-ai/sdk": "^0.70.0"
+    "@anthropic-ai/sdk": "^0.70.0",
+    "livekit-client": "^2.21.0",
+    "simli-client": "^3.0.2"
   },
   "devDependencies": {
     "vite": "^6.0.0"

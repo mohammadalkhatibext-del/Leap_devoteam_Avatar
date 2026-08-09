@@ -1,78 +1,75 @@
-import { createClient } from "@anam-ai/js-sdk";
-import { chunkPcm, toBase64 } from "./audio.js";
+import { anamAdapter } from "./adapters/anam.js";
+import { simliAdapter } from "./adapters/simli.js";
+import { akoolAdapter } from "./adapters/akool.js";
+
+const ADAPTERS = {
+  anam: anamAdapter,
+  simli: simliAdapter,
+  akool: akoolAdapter,
+};
 
 /**
- * Anam, in audio-passthrough mode: we supply the samples, Anam only lip-syncs.
+ * The one object the booth talks to, whichever renderer is selected.
  *
- * The booth deliberately keeps ONE audio stream open per answer rather than one per
- * sentence. An answer is a single utterance that happens to be synthesised in pieces;
- * opening and closing a sequence per sentence would tell the renderer the speech ended
- * four times in fifteen seconds, and the avatar would settle back to idle between
- * clauses. Passing `endSequence()` only when the answer is genuinely finished is what
- * keeps the delivery continuous.
- *
- * Docs: https://anam.ai/docs/javascript-sdk/examples/custom-tts
+ * The server decides which vendor to use (from operator settings) and returns the
+ * session plus a `mode`. This picks the matching client adapter and exposes a single
+ * surface, so `main.js` never branches on vendor — only on `mode`, which is a real
+ * behavioural difference: "pcm" renderers speak our Arabic audio, "text" renderers
+ * speak their own voice from our text.
  */
 export const avatar = {
-  client: null,
-  stream: null,
-  rate: null,
-  speaking: false,
+  impl: null,
+  provider: null,
+  mode: null,
+  sampleRate: null,
 
-  async connect(videoElementId, { log }) {
-    const res = await fetch("/api/anam/token", { method: "POST" });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || JSON.stringify(body));
-
-    const token = body.sessionToken ?? body.session_token;
-    if (!token) throw new Error(`no session token: ${JSON.stringify(body)}`);
-
-    log("token acquired, connecting…");
-    // No mic input: the browser captures audio itself for STT, and the avatar is
-    // driven purely by the PCM we push.
-    this.client = createClient(token, { disableInputAudio: true });
-    await this.client.streamToVideoElement(videoElementId);
-    log("avatar ready");
+  get client() {
+    return this.impl?.client ?? this.impl?.room ?? null;
   },
 
-  /** Open the audio sequence for one answer. */
-  begin(sampleRate, { log }) {
-    if (!this.stream || this.rate !== sampleRate) {
-      this.stream = this.client.createAgentAudioInputStream({
-        encoding: "pcm_s16le",
-        sampleRate,
-        channels: 1,
-      });
-      this.rate = sampleRate;
-      log(`audio stream open @ ${sampleRate} Hz`);
-    }
-    this.speaking = true;
+  async connect(videoElementId, ctx) {
+    const res = await fetch("/api/avatar/session", { method: "POST" });
+    const session = await res.json();
+    if (!res.ok) throw new Error(session.error || JSON.stringify(session));
+
+    const make = ADAPTERS[session.provider];
+    if (!make) throw new Error(`no client adapter for provider "${session.provider}"`);
+
+    this.impl = make();
+    this.provider = session.provider;
+    this.mode = session.mode;
+    this.sampleRate = session.sampleRate;
+
+    ctx.log(`${session.label}: ${session.mode} mode${session.sampleRate ? ` @ ${session.sampleRate} Hz` : ""}`);
+    await this.impl.connect(videoElementId, session, ctx);
   },
 
-  /** Push one synthesised clip into the open sequence. */
-  push(pcm) {
-    if (!this.stream) return;
-    for (const chunk of chunkPcm(pcm, this.rate, 200)) {
-      this.stream.sendAudioChunk(toBase64(chunk));
-    }
+  begin(sampleRate, ctx) {
+    this.impl?.begin(sampleRate, ctx);
   },
 
-  /** Mark the answer finished so the avatar can return to a natural idle. */
+  /** Feed one synthesised clip (pcm renderers only). */
+  push(pcm, ctx) {
+    this.impl?.push(pcm, ctx);
+  },
+
+  /** Have the renderer speak this text in its own voice (text renderers only). */
+  say(text, ctx) {
+    this.impl?.say?.(text, ctx);
+  },
+
   end() {
-    this.stream?.endSequence();
-    this.speaking = false;
+    this.impl?.end();
   },
 
   interrupt() {
-    this.client?.interruptPersona();
-    this.speaking = false;
+    this.impl?.interrupt();
   },
 
   async disconnect() {
-    this.client?.stopStreaming();
-    this.client = null;
-    this.stream = null;
-    this.rate = null;
-    this.speaking = false;
+    await this.impl?.disconnect();
+    this.impl = null;
+    this.provider = null;
+    this.mode = null;
   },
 };

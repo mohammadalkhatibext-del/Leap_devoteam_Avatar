@@ -45,6 +45,14 @@
 * {
   box-sizing: border-box;
 }
+
+/* `hidden` only sets `display: none` from the UA stylesheet, which any class rule
+   setting `display` silently beats — a `.grid2 { display: grid }` block stays on
+   screen with `hidden` applied. Every provider-specific field in the admin page hides
+   this way, so the attribute has to actually win. */
+[hidden] {
+  display: none !important;
+}
 html,
 body {
   height: 100%;

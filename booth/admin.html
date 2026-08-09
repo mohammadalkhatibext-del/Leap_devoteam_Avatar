@@ -78,11 +78,7 @@
       <!-- ---------------------------------------------------------- who -->
       <div class="card section">
         <h2>Who the visitor meets</h2>
-        <p class="lead">
-          The face on screen and the voice it speaks with. Each language has its own
-          voice — pick one that matches the avatar, or visitors notice the mismatch
-          before they notice anything else.
-        </p>
+        <p class="lead" id="whoLead"></p>
 
         <div class="field">
           <label for="profileName">Name of this setup</label>
@@ -91,12 +87,47 @@
         </div>
 
         <div class="field">
+          <label>Avatar provider — which renderer to test</label>
+          <div class="choices" id="providerChoices"></div>
+          <p class="hint" id="providerHint"></p>
+        </div>
+
+        <!-- Every provider-specific group starts hidden. Which one applies is only
+             known after boot() has fetched settings and the provider list, and
+             defaulting to visible means a visible flash of the wrong vendor's fields
+             on every load. -->
+        <div class="field" id="anamFields" hidden>
           <label for="avatarId">Avatar</label>
           <select id="avatarId"></select>
           <p class="hint" id="avatarHint">Loading the avatars available on your Anam account…</p>
         </div>
 
-        <div class="grid2">
+        <div class="grid2" id="simliFields" hidden>
+          <div class="field">
+            <label for="simliFaceId">Simli face ID</label>
+            <input id="simliFaceId" type="text" placeholder="follows SIMLI_FACE_ID in .env" />
+          </div>
+          <div class="field">
+            <label for="simliModel">Simli lip-sync model</label>
+            <select id="simliModel">
+              <option value="fasttalk">fasttalk</option>
+              <option value="artalk">artalk</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid2" id="akoolFields" hidden>
+          <div class="field">
+            <label for="akoolAvatarId">Akool avatar ID</label>
+            <input id="akoolAvatarId" type="text" placeholder="follows AKOOL_AVATAR_ID in .env" />
+          </div>
+          <div class="field">
+            <label for="akoolVoiceId">Akool voice ID</label>
+            <input id="akoolVoiceId" type="text" placeholder="Akool's own voice" />
+          </div>
+        </div>
+
+        <div class="grid2" id="voiceFields" hidden>
           <div class="field">
             <label for="voiceAr">Arabic voice</label>
             <select id="voiceAr"></select>
@@ -106,6 +137,7 @@
             <select id="voiceEn"></select>
           </div>
         </div>
+        <p class="hint" id="voiceHint"></p>
       </div>
 
       <!-- ------------------------------------------------------ behaviour -->

@@ -19,6 +19,7 @@ const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
   "server",
   "settings.mjs",
 );
+const { createSession, listProviders } = await load("server", "providers.mjs");
 const { ensureTts, prewarmFillers, filler, SpeechQueue, SAMPLE_RATE } = await load(
   "server",
   "tts.mjs",
@@ -120,24 +121,21 @@ function boothApi() {
         const url = new URL(req.url, "http://localhost");
 
         try {
-          // ---- Anam: mint a passthrough session token -----------------------
-          if (url.pathname === "/api/anam/token" && req.method === "POST") {
-            const key = process.env.ANAM_API_KEY;
-            if (!key) return json(res, 400, { error: "ANAM_API_KEY not set in .env" });
-            const settings = await getSettings();
+          // ---- avatar: start a session with whichever renderer is selected ----
+          // One endpoint for all three vendors. The browser is told the `mode` so it
+          // knows whether to push PCM (Anam, Simli) or send text (Akool).
+          if (url.pathname === "/api/avatar/session" && req.method === "POST") {
+            try {
+              return json(res, 200, await createSession(await getSettings()));
+            } catch (err) {
+              server.config.logger.error(`  avatar session failed: ${err.message}`);
+              return json(res, 502, { error: err.message });
+            }
+          }
 
-            const r = await fetch("https://api.anam.ai/v1/auth/session-token", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                personaConfig: {
-                  name: settings.profileName || "Devoteam LEAP",
-                  avatarId: settings.avatarId || process.env.ANAM_AVATAR_ID,
-                  enableAudioPassthrough: true,
-                },
-              }),
-            });
-            return json(res, r.ok ? 200 : r.status, await r.json().catch(() => ({})));
+          // Which renderers this machine can actually use, for the admin picker.
+          if (url.pathname === "/api/avatar/providers") {
+            return json(res, 200, { providers: listProviders() });
           }
 
           // ---- settings: what the operator can change ------------------------

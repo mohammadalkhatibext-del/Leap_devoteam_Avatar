@@ -115,6 +115,9 @@
       <div class="card stage">
         <div class="badge"><span class="dot" id="dot"></span><span id="state" data-t="notConnected">غير متصل</span></div>
         <video id="avatar" autoplay playsinline></video>
+        <!-- Simli and Akool send audio back over WebRTC and need a real element to
+             play it through; Anam handles its own. Harmless when unused. -->
+        <audio id="avatar-audio" autoplay></audio>
         <div class="placeholder" id="placeholder"></div>
         <div class="subtitle" id="subtitle"></div>
       </div>

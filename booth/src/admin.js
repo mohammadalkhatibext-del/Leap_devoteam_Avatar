@@ -15,6 +15,7 @@ const $ = (id) => document.getElementById(id);
 
 let saved = null; // last known server state, for Undo
 let voices = [];
+let providers = [];
 
 /* ------------------------------------------------------------ form binding */
 
@@ -26,11 +27,16 @@ const TEXT_FIELDS = [
   "idleResetMinutes",
   "extraKnowledge",
   "customInstructions",
+  "simliFaceId",
+  "simliModel",
+  "akoolAvatarId",
+  "akoolVoiceId",
 ];
 
 function read() {
   const s = {};
   for (const id of TEXT_FIELDS) s[id] = $(id).value;
+  s.avatarProvider = selected("providerChoices", "provider") || "anam";
   s.idleResetMinutes = Number(s.idleResetMinutes) || 5;
   s.answerWords = Number(selected("lengthChoices", "words")) || 35;
   s.greetFirstAnswer = $("greetFirstAnswer").checked;
@@ -51,7 +57,50 @@ function write(s) {
   $("fallbackEn").value = s.fallback?.messageEn ?? "";
   select("lengthChoices", "words", nearestLength(s.answerWords));
   select("fallbackMode", "mode", s.fallback?.mode ?? "speak");
+  select("providerChoices", "provider", s.avatarProvider ?? "anam");
+  applyProvider();
   renderPreview();
+}
+
+/**
+ * Show only the fields the selected renderer actually uses, and say plainly when a
+ * choice changes the voice.
+ *
+ * Akool has no audio input: it speaks our text in its own voice, so the Arabic and
+ * English voice pickers do nothing there. Leaving them visible and inert would let an
+ * operator carefully choose Hamed and then wonder why the booth sounds like someone
+ * else — the failure would look like a bug rather than a property of the vendor.
+ */
+function applyProvider() {
+  const id = selected("providerChoices", "provider") || "anam";
+  const p = providers.find((x) => x.id === id);
+
+  $("anamFields").hidden = id !== "anam";
+  $("simliFields").hidden = id !== "simli";
+  $("akoolFields").hidden = id !== "akool";
+
+  const usesOurVoice = p?.mode !== "text";
+  $("voiceFields").hidden = !usesOurVoice;
+
+  // The section intro has to move with the provider too. Telling an operator to "pick
+  // a voice that matches the avatar" directly above a panel with no voice pickers in
+  // it is the same defect as showing the wrong fields — text that describes a
+  // configuration the page is not currently offering.
+  $("whoLead").textContent = usesOurVoice
+    ? "The face on screen and the voice it speaks with. Each language has its own voice — pick one that matches the avatar, or visitors notice the mismatch before they notice anything else."
+    : `The face on screen. ${p?.label ?? "This renderer"} supplies the voice as well, so there is nothing to match here — choose the avatar and its voice in the ${p?.label ?? "vendor"} dashboard.`;
+  $("voiceHint").innerHTML = usesOurVoice
+    ? `${p?.label ?? "This renderer"} lip-syncs the Arabic we generate, so these voices are what visitors hear.`
+    : `<b style="color:var(--dv-intense-fire)">${p?.label} speaks with its own voice.</b> ` +
+      `It has no audio input, so our Arabic voice is bypassed entirely — comparing its lip-sync ` +
+      `with the others means comparing two different voices at once.`;
+
+  $("providerHint").innerHTML = !p
+    ? ""
+    : p.configured
+      ? escape(p.blurb)
+      : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(p.missing.join(", "))} in .env. ` +
+        `Saving this will leave the booth unable to connect.`;
 }
 
 /** Snap an arbitrary saved word count to the closest of the three presets. */
@@ -70,11 +119,12 @@ function select(groupId, key, value) {
   }
 }
 
-for (const groupId of ["lengthChoices", "fallbackMode"]) {
+for (const groupId of ["lengthChoices", "fallbackMode", "providerChoices"]) {
   $(groupId).addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
     for (const b of $(groupId).children) b.setAttribute("aria-pressed", String(b === btn));
+    if (groupId === "providerChoices") applyProvider();
     renderPreview();
     dirty();
   });
@@ -87,11 +137,17 @@ function renderPreview() {
   const words = s.answerWords;
   const seconds = Math.round(words / 2.2);
   const av = [...$("avatarId").options].find((o) => o.value === s.avatarId)?.textContent;
+  const p = providers.find((x) => x.id === s.avatarProvider);
+
+  const who =
+    p?.mode === "text"
+      ? `Visitors meet an <b>${escape(p.label)}</b> avatar, speaking <b>${escape(p.label)}'s own voice</b> — our Arabic voice is not used.`
+      : `Visitors meet <b>${escape(av || "—")}</b> via <b>${escape(p?.label ?? "Anam")}</b>, speaking
+         <b>${escape(shortVoice(s.voiceAr))}</b> in Arabic and
+         <b>${escape(shortVoice(s.voiceEn))}</b> in English.`;
 
   $("preview").innerHTML = `
-    Visitors meet <b>${escape(av || "—")}</b>, speaking
-    <b>${escape(shortVoice(s.voiceAr))}</b> in Arabic and
-    <b>${escape(shortVoice(s.voiceEn))}</b> in English.
+    ${who}
     Answers run about <b>${seconds} seconds</b>, and it
     ${s.greetFirstAnswer ? "greets each visitor once" : "skips greetings"}.
     The conversation clears itself after <b>${s.idleResetMinutes} minutes</b> of silence.
@@ -179,13 +235,32 @@ $("themeBtn").onclick = () => toggleTheme();
 initTheme();
 
 async function boot() {
-  const [settings, avatarsRes, voicesRes] = await Promise.all([
+  const [settings, avatarsRes, voicesRes, providersRes] = await Promise.all([
     fetch("/api/settings").then((r) => r.json()),
     fetch("/api/avatars").then((r) => r.json()).catch(() => ({ data: [] })),
     fetch("/api/voices").then((r) => r.json()).catch(() => ({ voices: [] })),
+    fetch("/api/avatar/providers").then((r) => r.json()).catch(() => ({ providers: [] })),
   ]);
 
   voices = voicesRes.voices ?? [];
+  providers = providersRes.providers ?? [];
+
+  // Provider picker. The subtitle on each button is the honest one-liner from the
+  // registry — "not configured" is shown up front rather than discovered at a booth.
+  const group = $("providerChoices");
+  group.innerHTML = "";
+  for (const p of providers) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.provider = p.id;
+    const note = p.configured
+      ? p.mode === "text"
+        ? "own voice (not ours)"
+        : `our voice @ ${p.sampleRate / 1000} kHz`
+      : "not configured";
+    b.innerHTML = `${escape(p.label)}<small>${escape(note)}</small>`;
+    group.appendChild(b);
+  }
 
   // Avatars: real names from the account, so the operator picks a face not a UUID.
   const avatarSel = $("avatarId");
