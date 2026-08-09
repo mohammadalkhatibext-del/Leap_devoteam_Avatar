@@ -115,8 +115,12 @@ node scripts/ask.mjs --probe               # the guardrail probe set
 node scripts/speak.mjs "ما هي ديفوتيم؟"    # same, spoken -> out/answer.wav
 ```
 
-Deepgram STT → **Claude (`claude-opus-5`) + Citations over the Devoteam corpus** → Arabic
-TTS → `AvatarAdapter`. The two middle legs are built; STT and the avatar are next.
+Deepgram STT → **Claude (`claude-sonnet-5`) + Citations over the Devoteam corpus** →
+Arabic TTS → `AvatarAdapter`.
+
+Sonnet rather than Opus because the task is retrieval and phrasing over a corpus
+that is already in context, not open-ended reasoning — near-Opus quality on this
+shape of work for a fraction of the tokens. `CLAUDE_MODEL` in `.env` overrides it.
 
 `devoteam_information/devoteam-knowledge-base.md` is ~30k tokens — small enough for
 long context, so there is **no vector database**. It's split one document block per

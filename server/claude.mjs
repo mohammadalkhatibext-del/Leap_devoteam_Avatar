@@ -2,7 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { loadCorpus } from "./corpus.mjs";
 import { SYSTEM_PROMPT } from "./system-prompt.mjs";
 
-const MODEL = "claude-opus-5";
+/**
+ * Sonnet 5, not Opus: the work here is retrieval and phrasing over a corpus already
+ * in context, not open-ended reasoning, and Sonnet reaches near-Opus quality on that
+ * shape of task at a fraction of the token cost. Override with CLAUDE_MODEL if a
+ * booth answer ever needs more than this can give.
+ */
+const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
 
 const client = new Anthropic();
 
@@ -87,6 +93,28 @@ function buildMessages(blocks, question, history) {
   ];
 }
 
+const ARABIC = /[؀-ۿ]/;
+
+/**
+ * Detect the answer reading source documents aloud instead of speaking.
+ *
+ * The corpus is English notes; when an Arabic answer degrades it does so by quoting
+ * whole English bullet lines, which the avatar then reads out to a visitor. This is
+ * worth catching rather than just avoiding, because of how it propagates: the bad
+ * answer goes into conversation history, the model reads its own previous turn as
+ * precedent, and every remaining answer in that visitor's session degrades with it.
+ * One slip poisons the whole conversation, so the caller needs to know it happened.
+ *
+ * Short Latin runs are expected and fine — "AWS", "Google Cloud", "Premier Tier" are
+ * how these things are actually said in Arabic speech. Six consecutive Latin words is
+ * not a brand name; it is a sentence from the documents.
+ */
+function looksLikeSourceLeak(answer, question) {
+  if (!ARABIC.test(answer)) return false; // an English answer to an English question
+  if (ARABIC.test(question) === false) return false;
+  return /(?:\b[A-Za-z][A-Za-z'’-]*\b[ ,;:()-]+){5,}\b[A-Za-z]/.test(answer);
+}
+
 /**
  * Ask the booth assistant a question, grounded in the Devoteam corpus.
  *
@@ -105,10 +133,14 @@ export async function ask(question, { onSentence, history = [] } = {}) {
   const stream = client.messages.stream({
     model: MODEL,
     max_tokens: 1024,
-    // Effort `low` is not a downgrade here: the work is retrieval and phrasing over
-    // a corpus already in context, not open-ended reasoning.
+    // Effort is the quality knob that matters here, and `low` is too low. The task
+    // looks like retrieval but is really translation-and-composition: the corpus is
+    // English notes in bullets and table rows, and the answer has to be spoken Arabic
+    // prose. At `low`, Sonnet takes the most literal path available and reads source
+    // lines out verbatim — including English ones, mid-Arabic-answer. `medium` makes
+    // it compose instead, for about a second of extra latency that the filler covers.
     thinking: { type: "disabled" },
-    output_config: { effort: "low" },
+    output_config: { effort: process.env.CLAUDE_EFFORT || "medium" },
     system: [
       { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
     ],
@@ -138,6 +170,7 @@ export async function ask(question, { onSentence, history = [] } = {}) {
     answer,
     citations,
     grounded: citations.length > 0,
+    leakedSource: looksLikeSourceLeak(answer, question),
     stopReason: message.stop_reason,
     timing: { firstTokenMs, totalMs: Date.now() - startedAt },
     usage: {

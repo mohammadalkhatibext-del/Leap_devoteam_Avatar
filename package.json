@@ -2,14 +2,22 @@
   "name": "leap-avatar",
   "private": true,
   "type": "module",
-  "description": "Devoteam LEAP booth avatar — Phase 1 answer engine (Deepgram STT -> Claude + Citations -> Arabic TTS -> Anam).",
+  "description": "Devoteam LEAP booth avatar — Deepgram STT -> Claude + Citations -> Arabic TTS -> Anam.",
   "scripts": {
+    "booth": "vite --config booth/vite.config.mjs",
     "ask": "node scripts/ask.mjs",
     "speak": "node scripts/speak.mjs",
+    "check:anam": "node scripts/check-anam.mjs",
+    "check:stt": "node scripts/stt-check.mjs",
     "harness": "npm --prefix harness run dev",
+    "check:anam": "node scripts/check-anam.mjs",
     "postinstall": "npm --prefix harness install --no-audit --no-fund"
   },
   "dependencies": {
+    "@anam-ai/js-sdk": "^4.0.0",
     "@anthropic-ai/sdk": "^0.70.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
   }
 }
