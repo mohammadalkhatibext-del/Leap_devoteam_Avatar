@@ -45,9 +45,32 @@ export const DEFAULTS = {
    */
   avatarId: "",
 
-  // One voice per language. Both are edge-tts / Microsoft neural voices.
+  /**
+   * Which engine turns the answer into speech: "edge" | "azure" | "elevenlabs" | "openai".
+   *
+   * Defaults to edge because it is the only one that needs no key at all — but it
+   * reaches Microsoft's voices through an undocumented endpoint and must not run at
+   * LEAP. Azure serves the identical voice catalogue legitimately, so moving to it
+   * changes nothing a visitor hears. server/tts-engines.mjs holds the detail.
+   */
+  ttsEngine: "edge",
+
+  /** Which engine turns the visitor's speech into text: "deepgram" | "openai". */
+  sttEngine: "deepgram",
+
+  // One voice per language. Used by the two Microsoft engines (edge and Azure), which
+  // share a voice catalogue — a voice picked on one works unchanged on the other.
   voiceAr: "ar-SA-HamedNeural",
   voiceEn: "en-US-GuyNeural",
+
+  /**
+   * The multilingual engines take a single voice for both languages instead of one
+   * per language, so they get their own fields rather than overloading the two above.
+   * Empty ElevenLabs id means "follow ELEVENLABS_VOICE_ID from .env" — same
+   * empty-until-chosen rule as the Anam avatar, and for the same reason.
+   */
+  elevenVoiceId: "",
+  openaiVoice: "alloy",
 
   /**
    * How long an answer should be, in words. The Arabic voice speaks about two words

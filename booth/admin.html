@@ -60,6 +60,33 @@
         padding: 14px 16px; font-size: .9rem; line-height: 1.6; color: var(--text-muted);
       }
       .preview b { color: var(--text); font-weight: 600; }
+
+      /* --- test lab ------------------------------------------------------- */
+      .testlab {
+        background: var(--surface-sunken); border-radius: var(--radius-button);
+        padding: 16px; margin-top: 4px;
+      }
+      .testrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+      .testrow .spacer { flex: 1; }
+      .choices.compact button { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: .85rem; }
+
+      .results:not(:empty) { margin-top: 14px; display: grid; gap: 8px; }
+      .result {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: var(--radius-button); padding: 10px 14px; font-size: .88rem;
+      }
+      /* The engine that is about to go live should be findable at a glance in a list
+         of four near-identical rows. */
+      .result.chosen { border-color: var(--dv-poppy); }
+      .result .name { font-weight: 600; min-width: 108px; }
+      .result .meta { color: var(--text-muted); font-size: .8rem; }
+      .result .said { flex: 1 1 100%; line-height: 1.5; }
+      .result .said:dir(rtl) { text-align: right; }
+      .result.bad { border-color: var(--dv-poppy); }
+      .result.bad .meta { color: var(--dv-poppy); }
+      .result button { padding: 7px 12px; font-size: .82rem; }
+      .result .spacer { flex: 1; }
     </style>
   </head>
   <body>
@@ -127,7 +154,28 @@
           </div>
         </div>
 
-        <div class="grid2" id="voiceFields" hidden>
+        <p class="hint" id="voiceHint"></p>
+      </div>
+
+      <!-- --------------------------------------------------------- sound -->
+      <div class="card section" id="soundCard">
+        <h2>How it sounds, and how it hears</h2>
+        <p class="lead">
+          Pick an engine, type a line, and listen. Every engine gets the identical text
+          at the identical quality, so the only thing that differs is the voice —
+          judge them by ear and save the one you want the booth to use.
+        </p>
+
+        <div class="field">
+          <label>Voice engine — turns the answer into speech</label>
+          <div class="choices" id="ttsChoices"></div>
+          <p class="hint" id="ttsHint"></p>
+        </div>
+
+        <!-- One voice group per engine shape. All start hidden: which applies is only
+             known after boot() has the engine list, and defaulting to visible flashes
+             the wrong vendor's fields on every load. -->
+        <div class="grid2" id="microsoftVoiceFields" hidden>
           <div class="field">
             <label for="voiceAr">Arabic voice</label>
             <select id="voiceAr"></select>
@@ -137,7 +185,62 @@
             <select id="voiceEn"></select>
           </div>
         </div>
-        <p class="hint" id="voiceHint"></p>
+
+        <div class="field" id="elevenVoiceFields" hidden>
+          <label for="elevenVoiceId">ElevenLabs voice</label>
+          <select id="elevenVoiceId"></select>
+          <p class="hint" id="elevenHint">
+            One voice speaks both languages — the model is multilingual, so there is no
+            separate Arabic and English choice.
+          </p>
+        </div>
+
+        <div class="field" id="openaiVoiceFields" hidden>
+          <label for="openaiVoice">OpenAI voice</label>
+          <select id="openaiVoice"></select>
+          <p class="hint">
+            One voice for both languages. These are English-first voices — listen to the
+            Arabic below before you trust it in Riyadh.
+          </p>
+        </div>
+
+        <div class="field">
+          <label>Hearing engine — turns the visitor's speech into text</label>
+          <div class="choices" id="sttChoices"></div>
+          <p class="hint" id="sttHint"></p>
+        </div>
+
+        <!-- ------------------------------------------------------ test lab -->
+        <div class="field testlab">
+          <label for="testText">Try a line</label>
+          <textarea id="testText" dir="auto" style="min-height: 72px"></textarea>
+          <div class="testrow">
+            <div class="choices compact" id="testLang">
+              <button type="button" data-lang="ar">Arabic</button>
+              <button type="button" data-lang="en">English</button>
+            </div>
+            <div class="spacer"></div>
+            <button type="button" id="speakOne" class="secondary">▶ Hear selected engine</button>
+            <button type="button" id="speakAll">Compare every engine</button>
+          </div>
+          <p class="hint">
+            Nothing here is saved and nothing reaches the booth — it only plays to you.
+            Press Save at the bottom to make the selected engine live.
+          </p>
+          <div id="ttsResults" class="results"></div>
+        </div>
+
+        <div class="field testlab">
+          <label>Try your voice</label>
+          <div class="testrow">
+            <button type="button" id="recBtn" class="secondary">● Record a question</button>
+            <span class="hint" id="recHint" style="margin:0">
+              Records from this machine's microphone, then transcribes it on every
+              configured engine at once.
+            </span>
+          </div>
+          <div id="sttResults" class="results"></div>
+        </div>
       </div>
 
       <!-- ------------------------------------------------------ behaviour -->

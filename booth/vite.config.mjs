@@ -14,16 +14,20 @@ try {
 const load = (...seg) => import(pathToFileURL(path.join(ROOT, ...seg)).href);
 
 const { ask } = await load("server", "claude.mjs");
-const { transcribe } = await load("server", "deepgram.mjs");
 const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
   "server",
   "settings.mjs",
 );
 const { createSession, listProviders } = await load("server", "providers.mjs");
-const { ensureTts, prewarmFillers, filler, SpeechQueue, SAMPLE_RATE } = await load(
+const { ensureTts, prewarmFillers, filler, speak, SpeechQueue, SAMPLE_RATE, toWav } = await load(
   "server",
   "tts.mjs",
 );
+const { listTtsEngines, voiceFor, listElevenVoices, TTS_ENGINES, OPENAI_VOICES } = await load(
+  "server",
+  "tts-engines.mjs",
+);
+const { transcribe, transcribeAll, listSttEngines } = await load("server", "stt-engines.mjs");
 
 const TTS_PORT = Number(process.env.TTS_PORT || 8765);
 
@@ -66,11 +70,20 @@ const readRaw = (req) =>
 const sessions = new Map();
 const historyFor = (sid) => sessions.get(sid) ?? [];
 
-const voiceFor = (settings, language) =>
-  language === "en" ? settings.voiceEn : settings.voiceAr;
-
+/**
+ * Render the filler clips for whichever engine is currently selected.
+ *
+ * The Microsoft engines take one voice per language; the multilingual ones take one
+ * voice for both, so `voiceFor` is asked per language rather than reading the two
+ * settings fields directly — otherwise picking ElevenLabs would prewarm fillers in
+ * the *edge* voice and the visitor would hear the engine change mid-answer.
+ */
 async function warmFillers(settings) {
-  return prewarmFillers({ ar: settings.voiceAr, en: settings.voiceEn });
+  const engine = settings.ttsEngine;
+  return prewarmFillers(
+    { ar: voiceFor(settings, engine, "ar"), en: voiceFor(settings, engine, "en") },
+    engine,
+  );
 }
 
 function boothApi() {
@@ -185,17 +198,97 @@ function boothApi() {
           if (url.pathname === "/api/stt" && req.method === "POST") {
             const audio = await readRaw(req);
             if (!audio.length) return json(res, 400, { error: "empty audio" });
+            const settings = await getSettings();
             try {
               return json(
                 res,
                 200,
                 await transcribe(audio, {
+                  engine: settings.sttEngine,
                   contentType: req.headers["content-type"] || "audio/webm",
                 }),
               );
             } catch (err) {
               return json(res, 502, { error: err.message });
             }
+          }
+
+          // ---- engine pickers + the settings-page test lab ---------------------
+          // Which engines this machine can actually use, so the picker states
+          // "not configured" up front rather than letting it be discovered at a booth.
+          if (url.pathname === "/api/tts/engines") {
+            return json(res, 200, { engines: listTtsEngines(), openaiVoices: OPENAI_VOICES });
+          }
+
+          if (url.pathname === "/api/stt/engines") {
+            return json(res, 200, { engines: listSttEngines() });
+          }
+
+          if (url.pathname === "/api/tts/eleven-voices") {
+            try {
+              return json(res, 200, { voices: await listElevenVoices() });
+            } catch {
+              return json(res, 200, { voices: [] }); // admin page still loads
+            }
+          }
+
+          /**
+           * Synthesise one line on every configured engine and hand back playable WAVs.
+           *
+           * The whole point is that the text is identical across engines — the same
+           * controlled-experiment discipline Phase 0 used for renderers, where one
+           * fixture set was rendered once and fed to every vendor. Anything that
+           * varied the input would make the comparison worthless.
+           *
+           * WAV rather than raw PCM because this is the one consumer that is a plain
+           * <audio> element rather than the booth's Web Audio pipeline; a RIFF header
+           * costs 44 bytes and saves the admin page from owning a decoder.
+           */
+          if (url.pathname === "/api/tts/compare" && req.method === "POST") {
+            const { text, language = "ar", engines } = await readBody(req);
+            if (!text?.trim()) return json(res, 400, { error: "text is required" });
+
+            const settings = await getSettings();
+            const wanted = Array.isArray(engines) && engines.length
+              ? engines
+              : listTtsEngines().filter((e) => e.configured).map((e) => e.id);
+
+            const results = await Promise.all(
+              wanted.map(async (id) => {
+                const label = TTS_ENGINES[id]?.label ?? id;
+                const voice = voiceFor(settings, id, language);
+                const startedAt = Date.now();
+                try {
+                  const pcm = await speak(text, { engine: id, voice, language });
+                  return {
+                    engine: id,
+                    label,
+                    ok: true,
+                    voice,
+                    ms: Date.now() - startedAt,
+                    seconds: +(pcm.length / 2 / SAMPLE_RATE).toFixed(1),
+                    chars: text.length,
+                    wav: toWav(pcm, SAMPLE_RATE).toString("base64"),
+                  };
+                } catch (err) {
+                  // One failing engine must not sink the comparison — "ElevenLabs is
+                  // out of characters" is itself a result the operator needs to see.
+                  return { engine: id, label, ok: false, voice, error: err.message };
+                }
+              }),
+            );
+            return json(res, 200, { results });
+          }
+
+          /** The same idea for hearing: one clip, every configured STT engine. */
+          if (url.pathname === "/api/stt/compare" && req.method === "POST") {
+            const audio = await readRaw(req);
+            if (!audio.length) return json(res, 400, { error: "empty audio" });
+            return json(res, 200, {
+              results: await transcribeAll(audio, {
+                contentType: req.headers["content-type"] || "audio/webm",
+              }),
+            });
           }
 
           // ---- reset a visitor's conversation --------------------------------
@@ -216,7 +309,8 @@ function boothApi() {
 
             const settings = await getSettings();
             const answerLanguage = spokenLanguage || defaultLanguage;
-            const voice = voiceFor(settings, answerLanguage);
+            const ttsEngine = settings.ttsEngine;
+            const voice = voiceFor(settings, ttsEngine, answerLanguage);
 
             res.writeHead(200, {
               "content-type": "text/event-stream; charset=utf-8",
@@ -232,7 +326,7 @@ function boothApi() {
             // sentence another ~1 s to synthesise; without this the avatar stands
             // frozen for three seconds, which visitors read as a crash rather than
             // as thinking.
-            const ack = filler({ language: answerLanguage, voice });
+            const ack = filler({ language: answerLanguage, voice, engine: ttsEngine });
             if (ack) {
               send("audio", {
                 index: -1,
@@ -245,7 +339,7 @@ function boothApi() {
             const queue = new SpeechQueue(
               (pcm, { index, text }) =>
                 send("audio", { index, text, pcm: pcm.toString("base64") }),
-              { voice },
+              { voice, engine: ttsEngine, language: answerLanguage },
             );
 
             try {
@@ -298,7 +392,7 @@ function boothApi() {
                   try {
                     const q2 = new SpeechQueue(
                       (pcm, meta) => send("audio", { ...meta, pcm: pcm.toString("base64") }),
-                      { voice },
+                      { voice, engine: ttsEngine, language: answerLanguage },
                     );
                     q2.push(text);
                     await q2.drain();

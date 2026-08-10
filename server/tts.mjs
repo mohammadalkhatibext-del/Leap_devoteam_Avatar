@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { synth, SAMPLE_RATE, DEFAULT_TTS_ENGINE } from "./tts-engines.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVICE = path.join(ROOT, "server", "tts_service.py");
 
 const PORT = Number(process.env.TTS_PORT || 8765);
 const BASE = `http://127.0.0.1:${PORT}`;
-export const SAMPLE_RATE = 24000;
+export { SAMPLE_RATE };
 
 /** SCORING.md Step 1 winner. Male, to match the Anam persona `Faisal - Cultural Guide`. */
 export const DEFAULT_VOICE = process.env.TTS_VOICE || "ar-SA-HamedNeural";
@@ -70,22 +71,21 @@ const clipCache = new Map();
 
 /**
  * Arabic (or English) text -> raw 16-bit mono PCM at 24 kHz.
- * `cache: true` memoises by text+voice — only worth it for fixed phrases.
+ *
+ * The engine is a parameter rather than a module-level constant because a booth
+ * operator can change it mid-event from the settings page, and the next question has
+ * to use the new one without a restart. `cache: true` memoises — only worth it for
+ * fixed phrases, and the key carries the engine so switching engines never replays a
+ * cached clip in the previous engine's voice.
  */
-export async function speak(text, { voice = DEFAULT_VOICE, cache = false } = {}) {
-  const key = `${voice} ${text}`;
+export async function speak(
+  text,
+  { engine = DEFAULT_TTS_ENGINE, voice = DEFAULT_VOICE, language = "ar", cache = false } = {},
+) {
+  const key = `${engine} ${voice} ${text}`;
   if (cache && clipCache.has(key)) return clipCache.get(key);
 
-  const res = await fetch(`${BASE}/tts`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, voice }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`TTS ${res.status}: ${detail.slice(0, 300)}`);
-  }
-  const pcm = Buffer.from(await res.arrayBuffer());
+  const pcm = await synth(text, { engine, voice, language });
   if (cache) clipCache.set(key, pcm);
   return pcm;
 }
@@ -107,23 +107,29 @@ export const FILLERS = {
 
 /**
  * Render every filler once at startup so no visitor ever waits for one.
+ *
+ * On a paid engine this is also the cheapest prewarm there is: two short phrases per
+ * language, rendered once and reused for every visitor all day, instead of billing a
+ * fresh "one moment please" on every single question.
+ *
  * @param {{ar?: string, en?: string}} voices  voice id per language
+ * @param {string} engine  which TTS engine to render them on
  */
-export async function prewarmFillers(voices = {}) {
+export async function prewarmFillers(voices = {}, engine = DEFAULT_TTS_ENGINE) {
   const jobs = [];
   for (const [lang, texts] of Object.entries(FILLERS)) {
     const voice = voices[lang] ?? DEFAULT_VOICE;
-    for (const t of texts) jobs.push(speak(t, { voice, cache: true }));
+    for (const t of texts) jobs.push(speak(t, { engine, voice, language: lang, cache: true }));
   }
   await Promise.all(jobs);
   return jobs.length;
 }
 
 /** A pre-rendered filler clip in the given language, or null if prewarm hasn't run. */
-export function filler({ language = "ar", voice = DEFAULT_VOICE } = {}) {
+export function filler({ language = "ar", voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE } = {}) {
   const texts = FILLERS[language] ?? FILLERS.ar;
   const text = texts[Math.floor(Math.random() * texts.length)];
-  const pcm = clipCache.get(`${voice} ${text}`);
+  const pcm = clipCache.get(`${engine} ${voice} ${text}`);
   return pcm ? { pcm, text } : null;
 }
 
@@ -140,11 +146,15 @@ export function filler({ language = "ar", voice = DEFAULT_VOICE } = {}) {
 export class SpeechQueue {
   #tail = Promise.resolve();
   #voice;
+  #engine;
+  #language;
 
   /** @param {(pcm: Buffer, meta: {index: number, text: string}) => any} onClip */
-  constructor(onClip, { voice = DEFAULT_VOICE } = {}) {
+  constructor(onClip, { voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE, language = "ar" } = {}) {
     this.onClip = onClip;
     this.#voice = voice;
+    this.#engine = engine;
+    this.#language = language;
     this.count = 0;
   }
 
@@ -155,9 +165,13 @@ export class SpeechQueue {
     // Deferring it to the `.then` below is what crashed the whole dev server: this
     // promise can reject while the queue is still playing an earlier clip, and until
     // something is attached to it Node counts that as an unhandled rejection and
-    // kills the process. A dead TTS sidecar must degrade to silent subtitles, never
+    // kills the process. A dead TTS engine must degrade to silent subtitles, never
     // take the booth down with it.
-    const pending = speak(text, { voice: this.#voice }).catch((err) => {
+    const pending = speak(text, {
+      engine: this.#engine,
+      voice: this.#voice,
+      language: this.#language,
+    }).catch((err) => {
       console.error(`  [tts] sentence ${index} failed: ${err.message}`);
       return null;
     });
