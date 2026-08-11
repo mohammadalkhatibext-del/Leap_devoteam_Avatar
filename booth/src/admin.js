@@ -18,6 +18,7 @@ let voices = [];
 let providers = [];
 let ttsEngines = [];
 let sttEngines = [];
+let elevenVoices = [];
 
 /* ------------------------------------------------------------ form binding */
 
@@ -26,7 +27,9 @@ const TEXT_FIELDS = [
   "avatarId",
   "voiceAr",
   "voiceEn",
-  "elevenVoiceId",
+  "elevenVoiceAr",
+  "elevenVoiceEn",
+  "elevenModel",
   "openaiVoice",
   "idleResetMinutes",
   "extraKnowledge",
@@ -45,6 +48,8 @@ function read() {
   s.sttEngine = selected("sttChoices", "engine") || "deepgram";
   s.idleResetMinutes = Number(s.idleResetMinutes) || 5;
   s.answerWords = Number(selected("lengthChoices", "words")) || 35;
+  s.akoolSessionSeconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
+  s.releaseAvatarWhenIdle = $("releaseAvatarWhenIdle").checked;
   s.greetFirstAnswer = $("greetFirstAnswer").checked;
   s.fallback = {
     enabled: $("fallbackEnabled").checked,
@@ -58,6 +63,8 @@ function read() {
 function write(s) {
   for (const id of TEXT_FIELDS) $(id).value = s[id] ?? "";
   $("greetFirstAnswer").checked = !!s.greetFirstAnswer;
+  $("releaseAvatarWhenIdle").checked = !!s.releaseAvatarWhenIdle;
+  select("akoolSessionChoices", "seconds", s.akoolSessionSeconds ?? 300);
   $("fallbackEnabled").checked = !!s.fallback?.enabled;
   $("fallbackAr").value = s.fallback?.messageAr ?? "";
   $("fallbackEn").value = s.fallback?.messageEn ?? "";
@@ -69,6 +76,7 @@ function write(s) {
   applyProvider();
   applyTtsEngine();
   applySttEngine();
+  applyAkoolSession();
   renderPreview();
 }
 
@@ -86,7 +94,7 @@ function applyTtsEngine() {
   const e = ttsEngines.find((x) => x.id === id);
 
   $("microsoftVoiceFields").hidden = e?.voiceMode !== "microsoft";
-  $("elevenVoiceFields").hidden = id !== "elevenlabs";
+  $("elevenVoiceFields").hidden = e?.voiceMode !== "pair";
   $("openaiVoiceFields").hidden = id !== "openai";
 
   // If the renderer supplies its own voice, none of this reaches a visitor. Say so
@@ -106,6 +114,26 @@ function applyTtsEngine() {
         : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(e.missing.join(", "))} in .env. ` +
           `Saving this will leave the booth silent.`) +
       (e.warn ? ` <b style="color:var(--dv-intense-fire)">${escape(e.warn)}</b>` : "");
+}
+
+/**
+ * Turn the session-length choice into the number an operator actually decides on:
+ * how many visitors a month's credits will serve.
+ *
+ * Akool does not publish the streaming rate in its API docs and the two public
+ * trackers disagree by 4x, so both are shown rather than one averaged figure that
+ * would look authoritative and be wrong. The ratio between the buttons is exact
+ * either way, and that is the part that matters: half the window, half the cost.
+ */
+function applyAkoolSession() {
+  const seconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
+  const minutes = seconds / 60;
+  const sessions = (creditsPerMin) => Math.floor(1200 / (creditsPerMin * minutes));
+  $("akoolSessionHint").innerHTML =
+    `Charged for the whole window, not for speech — so on 1200 credits (Pro Max) this is ` +
+    `<b>${sessions(7.2)}–${sessions(30)} visitors a month</b>, depending on which rate Akool ` +
+    `bills you at (they publish 1.2 credits/10s in one place and 30/min in another — ` +
+    `check your first invoice). Halving the window halves the cost per visitor.`;
 }
 
 function applySttEngine() {
@@ -179,7 +207,14 @@ function select(groupId, key, value) {
   }
 }
 
-for (const groupId of ["lengthChoices", "fallbackMode", "providerChoices", "ttsChoices", "sttChoices"]) {
+for (const groupId of [
+  "lengthChoices",
+  "fallbackMode",
+  "providerChoices",
+  "ttsChoices",
+  "sttChoices",
+  "akoolSessionChoices",
+]) {
   $(groupId).addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -187,6 +222,7 @@ for (const groupId of ["lengthChoices", "fallbackMode", "providerChoices", "ttsC
     if (groupId === "providerChoices") applyProvider();
     if (groupId === "ttsChoices") applyTtsEngine();
     if (groupId === "sttChoices") applySttEngine();
+    if (groupId === "akoolSessionChoices") applyAkoolSession();
     renderPreview();
     dirty();
   });
@@ -221,7 +257,9 @@ function renderPreview() {
   const spokenBy =
     tts?.voiceMode === "microsoft"
       ? `<b>${escape(shortVoice(s.voiceAr))}</b> in Arabic and <b>${escape(shortVoice(s.voiceEn))}</b> in English`
-      : `<b>${escape(s.ttsEngine === "openai" ? s.openaiVoice : s.elevenVoiceId || "the .env voice")}</b> in both languages`;
+      : tts?.voiceMode === "pair"
+        ? `<b>${escape(elevenName(s.elevenVoiceAr))}</b> in Arabic and <b>${escape(elevenName(s.elevenVoiceEn))}</b> in English`
+        : `<b>${escape(s.openaiVoice)}</b> in both languages`;
 
   const who =
     p?.mode === "text"
@@ -246,6 +284,13 @@ function renderPreview() {
 
 const escape = (v) =>
   String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/** A bare ElevenLabs id tells an operator nothing; the voice's name does. */
+function elevenName(id) {
+  if (!id) return "the .env voice";
+  const v = elevenVoices.find((x) => x.id === id);
+  return v ? v.name : id;
+}
 
 /** "ar-SA-HamedNeural" reads as noise to an operator; "Hamed (Saudi)" does not. */
 function shortVoice(id) {
@@ -321,7 +366,21 @@ async function compareTts(engines) {
     const res = await fetch("/api/tts/compare", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, language: testLanguage(), engines }),
+      body: JSON.stringify({
+        text,
+        language: testLanguage(),
+        engines,
+        // The voice fields as they stand on screen, saved or not — the lab must test
+        // the choice being made, not the one already stored.
+        overrides: {
+          voiceAr: $("voiceAr").value,
+          voiceEn: $("voiceEn").value,
+          elevenVoiceAr: $("elevenVoiceAr").value,
+          elevenVoiceEn: $("elevenVoiceEn").value,
+          elevenModel: $("elevenModel").value,
+          openaiVoice: $("openaiVoice").value,
+        },
+      }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || `failed (${res.status})`);
@@ -418,7 +477,14 @@ function dirty() {
   status("Unsaved changes");
 }
 
-for (const id of [...TEXT_FIELDS, "greetFirstAnswer", "fallbackEnabled", "fallbackAr", "fallbackEn"]) {
+for (const id of [
+  ...TEXT_FIELDS,
+  "greetFirstAnswer",
+  "releaseAvatarWhenIdle",
+  "fallbackEnabled",
+  "fallbackAr",
+  "fallbackEn",
+]) {
   $(id).addEventListener("input", () => {
     renderPreview();
     dirty();
@@ -468,7 +534,7 @@ $("themeBtn").onclick = () => toggleTheme();
 initTheme();
 
 async function boot() {
-  const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes] = await Promise.all([
+  const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([
     fetch("/api/settings").then((r) => r.json()),
     fetch("/api/avatars").then((r) => r.json()).catch(() => ({ data: [] })),
     fetch("/api/voices").then((r) => r.json()).catch(() => ({ voices: [] })),
@@ -476,6 +542,7 @@ async function boot() {
     fetch("/api/tts/engines").then((r) => r.json()).catch(() => ({ engines: [], openaiVoices: [] })),
     fetch("/api/stt/engines").then((r) => r.json()).catch(() => ({ engines: [] })),
     fetch("/api/tts/eleven-voices").then((r) => r.json()).catch(() => ({ voices: [] })),
+    fetch("/api/akool/avatars").then((r) => r.json()).catch(() => ({ avatars: [] })),
   ]);
 
   voices = voicesRes.voices ?? [];
@@ -517,40 +584,82 @@ async function boot() {
    * id, and it gets the same treatment: list what the key can use, and flag a saved
    * value that is not among them instead of letting it fail mid-answer.
    */
-  const elevenSel = $("elevenVoiceId");
-  elevenSel.innerHTML = "";
-  const elevenVoices = elevenRes.voices ?? [];
-  if (!elevenVoices.length) {
-    elevenSel.innerHTML = `<option value="${escape(settings.elevenVoiceId)}">${escape(settings.elevenVoiceId || "none configured")}</option>`;
-    $("elevenHint").textContent =
-      "Could not reach ElevenLabs — showing the saved value. Check ELEVENLABS_API_KEY, then reload.";
-  } else {
+  elevenVoices = elevenRes.voices ?? [];
+
+  // Two pickers, ordered so the language's own native voices come first. A booth in
+  // Riyadh should not have to scroll past twenty American voices to find the Arabic
+  // one, and the ordering is the cheapest way to say which voices belong here.
+  for (const [selId, langCode] of [["elevenVoiceAr", "ar"], ["elevenVoiceEn", "en"]]) {
+    const sel = $(selId);
+    sel.innerHTML = "";
+    if (!elevenVoices.length) {
+      const savedId = settings[selId];
+      sel.innerHTML = `<option value="${escape(savedId)}">${escape(savedId || "none configured")}</option>`;
+      continue;
+    }
     const useEnv = document.createElement("option");
     useEnv.value = "";
-    useEnv.textContent = "Use the voice configured in .env";
-    elevenSel.appendChild(useEnv);
-    for (const v of elevenVoices) {
-      const o = document.createElement("option");
-      o.value = v.id;
-      // The lock is not decoration. The native-Arabic voices on this account are all
-      // "professional", and a free key gets 402 on them at the moment the avatar tries
-      // to speak — so which voices are reachable has to be readable at a glance.
-      o.textContent = v.category === "premade" ? v.name : `🔒 ${v.name} (needs a paid plan)`;
-      elevenSel.appendChild(o);
+    useEnv.textContent = `Use ELEVENLABS_VOICE_${langCode.toUpperCase()} from .env`;
+    sel.appendChild(useEnv);
+
+    const native = elevenVoices.filter((v) => v.language === langCode);
+    const rest = elevenVoices.filter((v) => v.language !== langCode);
+    for (const [group, list] of [[`${langCode === "ar" ? "Arabic" : "English"} voices`, native], ["Other languages", rest]]) {
+      if (!list.length) continue;
+      const g = document.createElement("optgroup");
+      g.label = group;
+      for (const v of list) {
+        const o = document.createElement("option");
+        o.value = v.id;
+        o.textContent = [v.name, v.accent && v.accent !== "-" ? `(${v.accent})` : "", v.gender ? `· ${v.gender}` : ""]
+          .filter(Boolean)
+          .join(" ");
+        g.appendChild(o);
+      }
+      sel.appendChild(g);
     }
-    const savedId = settings.elevenVoiceId;
-    const known = !savedId || elevenVoices.some((v) => v.id === savedId);
-    if (!known) {
-      const missing = document.createElement("option");
-      missing.value = savedId;
-      missing.textContent = `⚠ ${savedId} — not usable on this key`;
-      elevenSel.insertBefore(missing, elevenSel.firstChild);
-    }
-    $("elevenHint").innerHTML =
-      `${elevenVoices.length} voices on this account. One voice speaks both languages. ` +
-      `<b>Voices marked with a category other than premade need a paid plan</b> — on a free ` +
-      `key they return "payment required" at the moment the avatar tries to speak.`;
   }
+
+  const modelSel = $("elevenModel");
+  modelSel.innerHTML = "";
+  const useEnvModel = document.createElement("option");
+  useEnvModel.value = "";
+  useEnvModel.textContent = "Use ELEVENLABS_MODEL_ID from .env";
+  modelSel.appendChild(useEnvModel);
+  for (const m of ttsRes.elevenModels ?? []) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = `${m.label} — ${m.note}`;
+    modelSel.appendChild(o);
+  }
+
+  $("elevenHint").textContent = elevenVoices.length
+    ? `${elevenVoices.length} voices on this account, native ones listed first for each language.`
+    : "Could not reach ElevenLabs — showing the saved values. Check ELEVENLABS_API_KEY, then reload.";
+
+  /**
+   * Akool avatars from the account, offered as suggestions on a still-typeable field.
+   *
+   * The hint carries the warning that matters more than the list: Akool bills the
+   * *whole session window* it was asked for, not the seconds the avatar speaks, so
+   * leaving sessions open is what drains an allowance — not talking a lot.
+   */
+  const akoolAvatars = akoolRes.avatars ?? [];
+  const akoolList = $("akoolAvatarList");
+  akoolList.innerHTML = "";
+  for (const a of akoolAvatars) {
+    const o = document.createElement("option");
+    o.value = a.id;
+    o.label = a.name;
+    akoolList.appendChild(o);
+  }
+  $("akoolHint").innerHTML =
+    (akoolAvatars.length
+      ? `${akoolAvatars.length} avatars on this Akool account — start typing to pick one. `
+      : `No avatars listed yet: add AKOOL_API_KEY (or the client id/secret pair) and AKOOL_AVATAR_ID to .env, then reload. `) +
+    `<b style="color:var(--dv-intense-fire)">Akool charges for the session window, not for speech.</b> ` +
+    `Credits are pre-charged for the full requested duration and only refunded when the session ends, ` +
+    `so an idle open session costs the same as a busy one — close sessions between visitors.`;
 
   // Seed the test lab with the hard Arabic line, so the first thing an operator hears
   // is the case that actually discriminates between engines.

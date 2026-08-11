@@ -108,6 +108,53 @@ async function akoolToken() {
   return { header: "Authorization", value: `Bearer ${token}` };
 }
 
+/**
+ * The streaming avatars this Akool key can use, for the admin picker.
+ *
+ * Akool documents a "Get Avatar List" for streaming avatars but publishes more than
+ * one path for avatar listing, and this project has no Akool key to confirm which one
+ * a live account answers on. Guessing a single path is what produced the credentials
+ * bug in the client adapter — so try the documented candidates in order and return
+ * the first that actually answers, rather than shipping one guess and a blank picker.
+ *
+ * Returns [] on any failure: a missing avatar list must never stop the settings page
+ * from loading, since every other renderer is configured from the same screen.
+ */
+const AVATAR_LIST_PATHS = [
+  "https://openapi.akool.com/api/open/v4/liveAvatar/avatar/list",
+  "https://openapi.akool.com/api/open/v3/avatar/list",
+];
+
+export async function listAkoolAvatars() {
+  let auth;
+  try {
+    auth = await akoolToken();
+  } catch {
+    return []; // no credentials yet — the picker just stays empty
+  }
+
+  for (const path of AVATAR_LIST_PATHS) {
+    try {
+      const r = await fetch(path, { headers: { [auth.header]: auth.value } });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok || (body.code && body.code !== 1000)) continue;
+
+      // The payload nests differently across Akool's list endpoints; accept either.
+      const rows = body.data?.result ?? body.data?.list ?? body.data ?? [];
+      if (!Array.isArray(rows) || !rows.length) continue;
+
+      return rows.map((a) => ({
+        id: a.avatar_id ?? a._id ?? a.id,
+        name: a.name ?? a.avatar_id ?? a._id,
+        source: path,
+      }));
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return [];
+}
+
 async function akoolSession(settings) {
   const avatarId = settings.akoolAvatarId || env("AKOOL_AVATAR_ID");
   if (!avatarId) throw new Error("AKOOL_AVATAR_ID not set in .env");
@@ -118,7 +165,11 @@ async function akoolSession(settings) {
     headers: { [auth.header]: auth.value, "Content-Type": "application/json" },
     body: JSON.stringify({
       avatar_id: avatarId,
-      duration: 600,
+      // Operator-set, because this is what the session actually costs: Akool
+      // pre-charges the full window and refunds the unused remainder only when the
+      // session closes. Asking for less, and closing when the visitor leaves, is the
+      // whole cost story for this renderer.
+      duration: settings.akoolSessionSeconds ?? 300,
       // Akool offers agora | livekit | trtc. LiveKit, because this repo already
       // depends on livekit-client for the HeyGen adapter — adding a second WebRTC
       // stack for one unverified vendor is weight the booth does not need.
@@ -145,6 +196,17 @@ async function akoolSession(settings) {
     credentials: data.credentials,
   };
 }
+
+/**
+ * Is this renderer billed by how long the session stays open, rather than by how much
+ * it speaks?
+ *
+ * Anam and Simli hold a stream we pay for differently; Akool pre-charges the whole
+ * requested window. The booth needs to know, because the correct behaviour when a
+ * visitor walks away differs: hold the session open for an instant start, or close it
+ * so an empty stand is not being billed.
+ */
+const BILLS_BY_SESSION = new Set(["akool"]);
 
 /* -------------------------------------------------------------------- registry */
 
@@ -229,5 +291,12 @@ export async function createSession(settings) {
   }
 
   const session = await p.createSession(settings);
-  return { ...session, label: p.label, transport: p.transport };
+  return {
+    ...session,
+    label: p.label,
+    transport: p.transport,
+    // The browser decides whether to release the session on idle, so it has to be
+    // told which renderers cost money for standing still.
+    billsBySession: BILLS_BY_SESSION.has(id),
+  };
 }

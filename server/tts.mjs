@@ -80,12 +80,15 @@ const clipCache = new Map();
  */
 export async function speak(
   text,
-  { engine = DEFAULT_TTS_ENGINE, voice = DEFAULT_VOICE, language = "ar", cache = false } = {},
+  { engine = DEFAULT_TTS_ENGINE, voice = DEFAULT_VOICE, language = "ar", model, cache = false } = {},
 ) {
-  const key = `${engine} ${voice} ${text}`;
+  // The model rides in the cache key alongside the engine and voice: switching
+  // models changes how a line sounds, so a cached clip from the previous model
+  // would otherwise be replayed as if nothing had changed.
+  const key = `${engine} ${model ?? ""} ${voice} ${text}`;
   if (cache && clipCache.has(key)) return clipCache.get(key);
 
-  const pcm = await synth(text, { engine, voice, language });
+  const pcm = await synth(text, { engine, voice, language, model });
   if (cache) clipCache.set(key, pcm);
   return pcm;
 }
@@ -115,21 +118,21 @@ export const FILLERS = {
  * @param {{ar?: string, en?: string}} voices  voice id per language
  * @param {string} engine  which TTS engine to render them on
  */
-export async function prewarmFillers(voices = {}, engine = DEFAULT_TTS_ENGINE) {
+export async function prewarmFillers(voices = {}, engine = DEFAULT_TTS_ENGINE, model) {
   const jobs = [];
   for (const [lang, texts] of Object.entries(FILLERS)) {
     const voice = voices[lang] ?? DEFAULT_VOICE;
-    for (const t of texts) jobs.push(speak(t, { engine, voice, language: lang, cache: true }));
+    for (const t of texts) jobs.push(speak(t, { engine, voice, language: lang, model, cache: true }));
   }
   await Promise.all(jobs);
   return jobs.length;
 }
 
 /** A pre-rendered filler clip in the given language, or null if prewarm hasn't run. */
-export function filler({ language = "ar", voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE } = {}) {
+export function filler({ language = "ar", voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE, model } = {}) {
   const texts = FILLERS[language] ?? FILLERS.ar;
   const text = texts[Math.floor(Math.random() * texts.length)];
-  const pcm = clipCache.get(`${engine} ${voice} ${text}`);
+  const pcm = clipCache.get(`${engine} ${model ?? ""} ${voice} ${text}`);
   return pcm ? { pcm, text } : null;
 }
 
@@ -148,13 +151,18 @@ export class SpeechQueue {
   #voice;
   #engine;
   #language;
+  #model;
 
   /** @param {(pcm: Buffer, meta: {index: number, text: string}) => any} onClip */
-  constructor(onClip, { voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE, language = "ar" } = {}) {
+  constructor(
+    onClip,
+    { voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE, language = "ar", model } = {},
+  ) {
     this.onClip = onClip;
     this.#voice = voice;
     this.#engine = engine;
     this.#language = language;
+    this.#model = model;
     this.count = 0;
   }
 
@@ -171,6 +179,7 @@ export class SpeechQueue {
       engine: this.#engine,
       voice: this.#voice,
       language: this.#language,
+      model: this.#model,
     }).catch((err) => {
       console.error(`  [tts] sentence ${index} failed: ${err.message}`);
       return null;

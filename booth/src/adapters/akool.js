@@ -28,9 +28,19 @@ export function akoolAdapter() {
     room: null,
 
     async connect(videoElementId, session, { log }) {
-      const { url, token } = session.credentials ?? {};
+      // Akool namespaces the connection fields by transport — the LiveKit credentials
+      // come back as `livekit_url` / `livekit_token`, not the bare `url` / `token`
+      // this adapter originally guessed at while it had no key to test against. The
+      // Agora and TRTC shapes are namespaced the same way, so read both spellings
+      // rather than assume: a wrong guess here fails at connect time with an empty
+      // room and no useful error.
+      const c = session.credentials ?? {};
+      const url = c.livekit_url ?? c.url;
+      const token = c.livekit_token ?? c.token;
       if (!url || !token) {
-        throw new Error("Akool returned no LiveKit url/token — check the session response");
+        throw new Error(
+          `Akool returned no LiveKit url/token — got fields: ${Object.keys(c).join(", ") || "(none)"}`,
+        );
       }
 
       this.room = new Room();

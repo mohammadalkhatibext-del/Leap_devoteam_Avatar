@@ -111,10 +111,10 @@ async function azureSynth(text, { voice, language }) {
 
 /* --------------------------------------------------------------- elevenlabs */
 
-async function elevenSynth(text, { voice }) {
+async function elevenSynth(text, { voice, model }) {
   const key = env("ELEVENLABS_API_KEY");
-  const voiceId = voice || env("ELEVENLABS_VOICE_ID");
-  if (!voiceId) throw new Error("no ElevenLabs voice id — set ELEVENLABS_VOICE_ID in .env");
+  const voiceId = voice;
+  if (!voiceId) throw new Error("no ElevenLabs voice — pick one in the settings page");
 
   // pcm_24000 returns RAW headerless PCM, already at our rate. Anything else would
   // need decoding on this side for no benefit.
@@ -125,9 +125,7 @@ async function elevenSynth(text, { voice }) {
       headers: { "xi-api-key": key, "content-type": "application/json" },
       body: JSON.stringify({
         text,
-        // multilingual_v2 covers Arabic (ar-SA/ar-AE); flash_v2_5 covers it too and is
-        // roughly half the latency, which is why it is worth trying at a booth.
-        model_id: env("ELEVENLABS_MODEL_ID") || "eleven_multilingual_v2",
+        model_id: model || env("ELEVENLABS_MODEL_ID") || "eleven_multilingual_v2",
       }),
     },
   );
@@ -196,10 +194,13 @@ export const TTS_ENGINES = {
   elevenlabs: {
     id: "elevenlabs",
     label: "ElevenLabs",
-    voiceMode: "single",
+    // A voice per language, not one multilingual voice: the account carries a
+    // native Arabic voice and a native English one, and a native speaker of each
+    // beats one voice stretched across both.
+    voiceMode: "pair",
     blurb:
-      "One multilingual voice for both languages. Generally the most natural Arabic of the four — the only engine here that could move the voice score above the 3.5 everything else got.",
-    requires: ["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"],
+      "A native voice per language. Generally the most natural Arabic of the four — the only engine here that could move the voice score above the 3.5 everything else got.",
+    requires: ["ELEVENLABS_API_KEY"],
     cost: "billed per character, live",
     synth: elevenSynth,
   },
@@ -231,13 +232,23 @@ export const DEFAULT_TTS_ENGINE = "edge";
 export async function listElevenVoices() {
   const key = env("ELEVENLABS_API_KEY");
   if (!key) return [];
-  const res = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
+  // v2 is what actually returns the voices added from the Voice Library. The v1
+  // per-voice lookup rejects them with a 400 even while text-to-speech accepts them
+  // perfectly — so v1 would report a working voice as missing.
+  const res = await fetch("https://api.elevenlabs.io/v2/voices?page_size=100", {
+    headers: { "xi-api-key": key },
+  });
   if (!res.ok) return [];
   const body = await res.json().catch(() => ({}));
   return (body.voices ?? []).map((v) => ({
     id: v.voice_id,
     name: v.name,
-    category: v.category, // "premade" is always usable; "professional"/library may 402
+    category: v.category,
+    // The labels are what make the picker usable: language decides which of the two
+    // pickers a voice belongs in, and accent decides whether it belongs in Riyadh.
+    language: v.labels?.language ?? "",
+    accent: v.labels?.accent ?? "",
+    gender: v.labels?.gender ?? "",
   }));
 }
 
@@ -274,20 +285,49 @@ export function listTtsEngines() {
  */
 export function voiceFor(settings, engineId, language) {
   const engine = TTS_ENGINES[engineId] ?? TTS_ENGINES[DEFAULT_TTS_ENGINE];
-  if (engine.voiceMode === "microsoft") {
-    return language === "en" ? settings.voiceEn : settings.voiceAr;
+  const en = language === "en";
+  if (engine.voiceMode === "microsoft") return en ? settings.voiceEn : settings.voiceAr;
+  if (engine.id === "elevenlabs") {
+    return (
+      (en ? settings.elevenVoiceEn : settings.elevenVoiceAr) ||
+      env(en ? "ELEVENLABS_VOICE_EN" : "ELEVENLABS_VOICE_AR")
+    );
   }
-  if (engine.id === "elevenlabs") return settings.elevenVoiceId || env("ELEVENLABS_VOICE_ID");
   if (engine.id === "openai") return settings.openaiVoice || "alloy";
   return "";
 }
 
+/**
+ * The ElevenLabs models that can actually speak Arabic.
+ *
+ * Deliberately not the full catalogue: eleven_turbo_v2, eleven_flash_v2 and
+ * eleven_english_sts_v2 are English-only, and offering them in a bilingual booth's
+ * picker would let an operator select a model that silently cannot say half of what
+ * the booth is for. Character ceilings are per request, far above one sentence, so
+ * they matter for the fixture renderer rather than for live answers.
+ */
+export const ELEVEN_MODELS = [
+  { id: "eleven_flash_v2_5", label: "Flash v2.5", note: "lowest latency — 32 languages" },
+  { id: "eleven_turbo_v2_5", label: "Turbo v2.5", note: "latency/quality middle — 32 languages" },
+  { id: "eleven_multilingual_v2", label: "Multilingual v2", note: "quality baseline — 29 languages" },
+  { id: "eleven_v3", label: "v3", note: "most expressive, slowest — 74 languages" },
+];
+
+/** Which model the selected engine should run. Only ElevenLabs exposes a choice. */
+export function modelFor(settings, engineId) {
+  if (engineId !== "elevenlabs") return undefined;
+  return settings.elevenModel || env("ELEVENLABS_MODEL_ID") || "eleven_multilingual_v2";
+}
+
 /** Synthesise one clip on a named engine. Always returns 24 kHz s16le mono PCM. */
-export async function synth(text, { engine = DEFAULT_TTS_ENGINE, voice, language = "ar" } = {}) {
+export async function synth(
+  text,
+  { engine = DEFAULT_TTS_ENGINE, voice, language = "ar", model } = {},
+) {
   const e = TTS_ENGINES[engine] ?? TTS_ENGINES[DEFAULT_TTS_ENGINE];
   const status = ttsStatus(e.id);
   if (!status.configured) {
     throw new Error(`${e.label} is not configured — missing ${status.missing.join(", ")} in .env`);
   }
-  return e.synth(text, { voice, language });
+  return e.synth(text, { voice, language, model });
 }

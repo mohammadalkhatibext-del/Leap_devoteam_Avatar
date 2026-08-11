@@ -22,6 +22,8 @@ export const avatar = {
   provider: null,
   mode: null,
   sampleRate: null,
+  /** True when the vendor charges for the open session, not for speech (Akool). */
+  billsBySession: false,
 
   get client() {
     return this.impl?.client ?? this.impl?.room ?? null;
@@ -39,6 +41,7 @@ export const avatar = {
     this.provider = session.provider;
     this.mode = session.mode;
     this.sampleRate = session.sampleRate;
+    this.billsBySession = !!session.billsBySession;
 
     ctx.log(`${session.label}: ${session.mode} mode${session.sampleRate ? ` @ ${session.sampleRate} Hz` : ""}`);
     await this.impl.connect(videoElementId, session, ctx);

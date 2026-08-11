@@ -18,15 +18,20 @@ const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
   "server",
   "settings.mjs",
 );
-const { createSession, listProviders } = await load("server", "providers.mjs");
+const { createSession, listProviders, listAkoolAvatars } = await load("server", "providers.mjs");
 const { ensureTts, prewarmFillers, filler, speak, SpeechQueue, SAMPLE_RATE, toWav } = await load(
   "server",
   "tts.mjs",
 );
-const { listTtsEngines, voiceFor, listElevenVoices, TTS_ENGINES, OPENAI_VOICES } = await load(
-  "server",
-  "tts-engines.mjs",
-);
+const {
+  listTtsEngines,
+  voiceFor,
+  modelFor,
+  listElevenVoices,
+  TTS_ENGINES,
+  OPENAI_VOICES,
+  ELEVEN_MODELS,
+} = await load("server", "tts-engines.mjs");
 const { transcribe, transcribeAll, listSttEngines } = await load("server", "stt-engines.mjs");
 
 const TTS_PORT = Number(process.env.TTS_PORT || 8765);
@@ -83,6 +88,7 @@ async function warmFillers(settings) {
   return prewarmFillers(
     { ar: voiceFor(settings, engine, "ar"), en: voiceFor(settings, engine, "en") },
     engine,
+    modelFor(settings, engine),
   );
 }
 
@@ -217,11 +223,23 @@ function boothApi() {
           // Which engines this machine can actually use, so the picker states
           // "not configured" up front rather than letting it be discovered at a booth.
           if (url.pathname === "/api/tts/engines") {
-            return json(res, 200, { engines: listTtsEngines(), openaiVoices: OPENAI_VOICES });
+            return json(res, 200, {
+              engines: listTtsEngines(),
+              openaiVoices: OPENAI_VOICES,
+              elevenModels: ELEVEN_MODELS,
+            });
           }
 
           if (url.pathname === "/api/stt/engines") {
             return json(res, 200, { engines: listSttEngines() });
+          }
+
+          if (url.pathname === "/api/akool/avatars") {
+            try {
+              return json(res, 200, { avatars: await listAkoolAvatars() });
+            } catch {
+              return json(res, 200, { avatars: [] }); // admin page still loads
+            }
           }
 
           if (url.pathname === "/api/tts/eleven-voices") {
@@ -245,10 +263,27 @@ function boothApi() {
            * costs 44 bytes and saves the admin page from owning a decoder.
            */
           if (url.pathname === "/api/tts/compare" && req.method === "POST") {
-            const { text, language = "ar", engines } = await readBody(req);
+            const { text, language = "ar", engines, overrides } = await readBody(req);
             if (!text?.trim()) return json(res, 400, { error: "text is required" });
 
-            const settings = await getSettings();
+            /**
+             * Test what the operator is about to save, not what is already saved.
+             *
+             * The page says "press Save to make this live", so the lab has to run on
+             * the *unsaved* form state — otherwise picking a new voice and pressing
+             * Compare silently synthesises the old one, and the operator debugs a
+             * result that came from a voice they had already replaced on screen.
+             * Only the voice fields are accepted; nothing here can change the booth.
+             */
+            const saved = await getSettings();
+            const settings = {
+              ...saved,
+              ...Object.fromEntries(
+                ["voiceAr", "voiceEn", "elevenVoiceAr", "elevenVoiceEn", "elevenModel", "openaiVoice"]
+                  .filter((k) => typeof overrides?.[k] === "string")
+                  .map((k) => [k, overrides[k]]),
+              ),
+            };
             const wanted = Array.isArray(engines) && engines.length
               ? engines
               : listTtsEngines().filter((e) => e.configured).map((e) => e.id);
@@ -257,9 +292,10 @@ function boothApi() {
               wanted.map(async (id) => {
                 const label = TTS_ENGINES[id]?.label ?? id;
                 const voice = voiceFor(settings, id, language);
+                const model = modelFor(settings, id);
                 const startedAt = Date.now();
                 try {
-                  const pcm = await speak(text, { engine: id, voice, language });
+                  const pcm = await speak(text, { engine: id, voice, language, model });
                   return {
                     engine: id,
                     label,
@@ -311,6 +347,7 @@ function boothApi() {
             const answerLanguage = spokenLanguage || defaultLanguage;
             const ttsEngine = settings.ttsEngine;
             const voice = voiceFor(settings, ttsEngine, answerLanguage);
+            const ttsModel = modelFor(settings, ttsEngine);
 
             res.writeHead(200, {
               "content-type": "text/event-stream; charset=utf-8",
@@ -326,7 +363,7 @@ function boothApi() {
             // sentence another ~1 s to synthesise; without this the avatar stands
             // frozen for three seconds, which visitors read as a crash rather than
             // as thinking.
-            const ack = filler({ language: answerLanguage, voice, engine: ttsEngine });
+            const ack = filler({ language: answerLanguage, voice, engine: ttsEngine, model: ttsModel });
             if (ack) {
               send("audio", {
                 index: -1,
@@ -339,7 +376,7 @@ function boothApi() {
             const queue = new SpeechQueue(
               (pcm, { index, text }) =>
                 send("audio", { index, text, pcm: pcm.toString("base64") }),
-              { voice, engine: ttsEngine, language: answerLanguage },
+              { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
             );
 
             try {
@@ -392,7 +429,7 @@ function boothApi() {
                   try {
                     const q2 = new SpeechQueue(
                       (pcm, meta) => send("audio", { ...meta, pcm: pcm.toString("base64") }),
-                      { voice, engine: ttsEngine, language: answerLanguage },
+                      { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
                     );
                     q2.push(text);
                     await q2.drain();

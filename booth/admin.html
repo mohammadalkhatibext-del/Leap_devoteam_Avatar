@@ -143,15 +143,52 @@
           </div>
         </div>
 
-        <div class="grid2" id="akoolFields" hidden>
-          <div class="field">
-            <label for="akoolAvatarId">Akool avatar ID</label>
-            <input id="akoolAvatarId" type="text" placeholder="follows AKOOL_AVATAR_ID in .env" />
+        <div id="akoolFields" hidden>
+          <div class="grid2">
+            <div class="field">
+              <label for="akoolAvatarId">Akool avatar</label>
+              <!-- A datalist rather than a select: the list only populates once a key
+                   exists, and until then an operator still has to be able to paste an
+                   id straight from the Akool dashboard. -->
+              <input
+                id="akoolAvatarId"
+                type="text"
+                list="akoolAvatarList"
+                placeholder="follows AKOOL_AVATAR_ID in .env"
+              />
+              <datalist id="akoolAvatarList"></datalist>
+            </div>
+            <div class="field">
+              <label for="akoolVoiceId">Akool voice ID</label>
+              <input id="akoolVoiceId" type="text" placeholder="Akool's own default voice" />
+            </div>
           </div>
+
           <div class="field">
-            <label for="akoolVoiceId">Akool voice ID</label>
-            <input id="akoolVoiceId" type="text" placeholder="Akool's own voice" />
+            <label>How long each session is opened for</label>
+            <div class="choices" id="akoolSessionChoices">
+              <button type="button" data-seconds="120">2 minutes<small>cheapest</small></button>
+              <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
+              <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
+            </div>
+            <p class="hint" id="akoolSessionHint"></p>
           </div>
+
+          <div class="field">
+            <label class="toggle" for="releaseAvatarWhenIdle">
+              <input id="releaseAvatarWhenIdle" type="checkbox" />
+              <span>Close the session when the stand goes quiet</span>
+            </label>
+            <p class="hint">
+              Ends the session after the idle timeout above instead of holding it open
+              for the next visitor, so an empty stand costs nothing. The next question
+              reconnects automatically — a few seconds, spent while the visitor is
+              still talking. Leave this off for Anam and Simli, which are not billed
+              this way.
+            </p>
+          </div>
+
+          <p class="hint" id="akoolHint"></p>
         </div>
 
         <p class="hint" id="voiceHint"></p>
@@ -186,13 +223,27 @@
           </div>
         </div>
 
-        <div class="field" id="elevenVoiceFields" hidden>
-          <label for="elevenVoiceId">ElevenLabs voice</label>
-          <select id="elevenVoiceId"></select>
-          <p class="hint" id="elevenHint">
-            One voice speaks both languages — the model is multilingual, so there is no
-            separate Arabic and English choice.
-          </p>
+        <div id="elevenVoiceFields" hidden>
+          <div class="grid2">
+            <div class="field">
+              <label for="elevenVoiceAr">Arabic voice</label>
+              <select id="elevenVoiceAr"></select>
+            </div>
+            <div class="field">
+              <label for="elevenVoiceEn">English voice</label>
+              <select id="elevenVoiceEn"></select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="elevenModel">ElevenLabs model</label>
+            <select id="elevenModel"></select>
+            <p class="hint">
+              A visitor is standing there waiting, so latency is a feature. Flash is the
+              fastest and v3 the most expressive; compare them on the same line below
+              before deciding the trade is worth it.
+            </p>
+          </div>
+          <p class="hint" id="elevenHint"></p>
         </div>
 
         <div class="field" id="openaiVoiceFields" hidden>

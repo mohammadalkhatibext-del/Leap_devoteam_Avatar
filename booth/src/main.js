@@ -54,6 +54,46 @@ setInterval(() => {
   newVisitor({ automatic: true });
 }, 15_000);
 
+/**
+ * Close the renderer session when the stand goes quiet, for renderers that charge by
+ * the open session rather than by speech.
+ *
+ * Akool pre-charges the whole requested window and only refunds the remainder once
+ * the session ends, so a session left open over a coffee break costs exactly what a
+ * busy one does. Releasing it turns an empty stand into an idle cost of zero; the
+ * price is a few seconds of reconnect when the next visitor speaks, which is paid
+ * while they are still finishing their question.
+ *
+ * Deliberately opt-in and provider-aware: Anam and Simli are not billed this way, and
+ * dropping their session would trade an instant start for nothing.
+ */
+async function releaseAvatarIfIdle() {
+  if (!settings.releaseAvatarWhenIdle || !avatar.billsBySession || !avatar.client) return;
+  try {
+    await avatar.disconnect();
+    $("placeholder").style.display = "";
+    setState("ready", "live");
+    log("session released — no charge while the stand is empty");
+  } catch (err) {
+    log(`could not release the session: ${err.message}`, true);
+  }
+}
+
+/** Bring the renderer back up if it was released while nobody was here. */
+async function ensureAvatar() {
+  if (avatar.client) return true;
+  setState("connecting", "busy");
+  try {
+    await avatar.connect("avatar", ctx);
+    $("placeholder").style.display = "none";
+    return true;
+  } catch (err) {
+    log(`reconnect failed: ${err.message}`, true);
+    setState("connectFailed");
+    return false;
+  }
+}
+
 async function newVisitor({ automatic = false } = {}) {
   await fetch("/api/reset", {
     method: "POST",
@@ -67,13 +107,22 @@ async function newVisitor({ automatic = false } = {}) {
   $("citations").innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
   $("metrics").textContent = "";
   log(automatic ? `idle ${settings.idleResetMinutes}m — conversation cleared` : "new visitor");
-  if (automatic) setTimeout(() => ($("subtitle").textContent = ""), 6000);
+  if (automatic) {
+    setTimeout(() => ($("subtitle").textContent = ""), 6000);
+    // Only on the automatic path: a staffer pressing "new visitor" is telling us
+    // somebody is standing there right now, and dropping the session in front of
+    // them would make the booth look broken at exactly the wrong moment.
+    await releaseAvatarIfIdle();
+  }
 }
 
 /* ------------------------------------------------------------------ ask flow */
 
 async function askQuestion(question, spokenLanguage = null) {
-  if (busy || !avatar.client) return;
+  if (busy) return;
+  // The session may have been released while the stand was empty. Bring it back
+  // before anything else — the visitor is mid-question and must not see a dead screen.
+  if (!(await ensureAvatar())) return;
   busy = true;
   touch();
   $("q").value = "";

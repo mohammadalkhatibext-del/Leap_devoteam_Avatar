@@ -36,6 +36,28 @@ export const DEFAULTS = {
   akoolLanguage: "ar",
 
   /**
+   * How long an Akool session is opened for, in seconds.
+   *
+   * This is a **cost** setting, not a comfort one. Akool pre-charges the whole
+   * requested window and refunds the remainder only once the session ends, so an
+   * idle open session costs exactly what a busy one does. Five minutes covers a
+   * booth conversation with room to spare; ten minutes simply doubles the bill for
+   * the same visitor.
+   */
+  akoolSessionSeconds: 300,
+
+  /**
+   * Close the renderer session when a visitor walks away, instead of holding it open
+   * for the next one.
+   *
+   * Only matters for renderers billed by session wall-clock — Akool. Reconnecting
+   * costs a few seconds at the start of the next conversation; leaving it open costs
+   * money for every minute nobody is standing there, which at an exhibition is most
+   * of them. Off by default so Anam and Simli keep their instant-start behaviour.
+   */
+  releaseAvatarWhenIdle: false,
+
+  /**
    * Anam avatar. Empty means "follow ANAM_AVATAR_ID from .env" — deliberately not
    * seeded from the environment, because doing so freezes whatever .env said the
    * first time settings were ever saved, and from then on editing .env silently does
@@ -64,12 +86,23 @@ export const DEFAULTS = {
   voiceEn: "en-US-GuyNeural",
 
   /**
-   * The multilingual engines take a single voice for both languages instead of one
-   * per language, so they get their own fields rather than overloading the two above.
-   * Empty ElevenLabs id means "follow ELEVENLABS_VOICE_ID from .env" — same
-   * empty-until-chosen rule as the Anam avatar, and for the same reason.
+   * ElevenLabs keeps its own pair, because its voice ids are nothing like the
+   * Microsoft ones and a native Arabic voice plus a native English voice beats one
+   * multilingual voice stretched across both. Empty means "follow
+   * ELEVENLABS_VOICE_AR / _EN from .env" — the same empty-until-chosen rule as the
+   * Anam avatar, so editing .env keeps working until an operator makes a choice here.
    */
-  elevenVoiceId: "",
+  elevenVoiceAr: "",
+  elevenVoiceEn: "",
+
+  /**
+   * ElevenLabs model. Latency is a feature at a booth — the visitor is standing
+   * there — so this is worth auditioning, not just leaving at the quality default.
+   * Empty follows ELEVENLABS_MODEL_ID from .env.
+   */
+  elevenModel: "",
+
+  /** OpenAI ships one voice for both languages; there is no per-language choice. */
   openaiVoice: "alloy",
 
   /**
@@ -143,6 +176,13 @@ export async function saveSettings(patch) {
   next.idleResetMinutes = Math.min(
     60,
     Math.max(1, Number(next.idleResetMinutes) || DEFAULTS.idleResetMinutes),
+  );
+
+  // Akool's own ceiling is 3600 s. A value above it is rejected by their API at
+  // session-create time — i.e. a dead booth — so clamp rather than forward it.
+  next.akoolSessionSeconds = Math.min(
+    3600,
+    Math.max(60, Number(next.akoolSessionSeconds) || DEFAULTS.akoolSessionSeconds),
   );
 
   await mkdir(path.dirname(FILE), { recursive: true });
