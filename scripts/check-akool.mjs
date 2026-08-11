@@ -126,9 +126,12 @@ if (!process.exitCode) {
       }
     }
     if (workingPath) {
-      console.log(`\n  → the live path is ${workingPath}`);
-      console.log(`    If AVATAR_LIST_PATHS in server/providers.mjs lists it second,`);
-      console.log(`    move it first so the picker stops paying for a failed attempt.`);
+      console.log(`\n  → the booth uses the v4 liveAvatar path, and only that one.`);
+      console.log(`    Both endpoints answer, but they are not the same list: v4 returns`);
+      console.log(`    the avatars that can STREAM, v3 the general catalogue. An id from`);
+      console.log(`    v3 looks perfectly valid and then fails at session/create — so if`);
+      console.log(`    your AKOOL_AVATAR_ID is missing from the v4 list above, that is the`);
+      console.log(`    bug, however right it looks in the Akool dashboard.`);
     } else {
       console.log(`\n  ⚠ neither path returned avatars. Not fatal — you can still paste an`);
       console.log(`    avatar id by hand — but the admin picker will stay empty.`);
@@ -136,7 +139,16 @@ if (!process.exitCode) {
 
     /* ------------------------------------------- 3. create, inspect, and close */
 
-    if (!avatarId) {
+    // Auth and listing are free; creating a session is not. `--no-session` stops here,
+    // so a key can be validated — and a typo'd avatar id caught — for nothing, which is
+    // the run you want before the first billed one rather than after it.
+    const billedRun = !process.argv.includes("--no-session");
+
+    if (!billedRun) {
+      console.log(`\n  ⊘ Stopping before the session test (--no-session).`);
+      console.log(`    Everything above was free. Re-run without the flag to open and`);
+      console.log(`    close one real ${"60"}s session and measure the refund.\n`);
+    } else if (!avatarId) {
       console.log(`\n  ⊘ Skipping the session test: AKOOL_AVATAR_ID is not set in .env.`);
       console.log(`    Pick an id from the list above, add it, and re-run.\n`);
     } else {

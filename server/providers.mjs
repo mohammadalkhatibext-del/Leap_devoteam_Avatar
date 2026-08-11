@@ -111,19 +111,19 @@ async function akoolToken() {
 /**
  * The streaming avatars this Akool key can use, for the admin picker.
  *
- * Akool documents a "Get Avatar List" for streaming avatars but publishes more than
- * one path for avatar listing, and this project has no Akool key to confirm which one
- * a live account answers on. Guessing a single path is what produced the credentials
- * bug in the client adapter — so try the documented candidates in order and return
- * the first that actually answers, rather than shipping one guess and a blank picker.
+ * ONE path, deliberately. An earlier version tried v4 and fell back to
+ * /api/open/v3/avatar/list, because no key existed here to confirm which one a live
+ * account answers on. A real key settled it (2026-08-11, via npm run check:akool):
+ * both answer 200, but they list different *kinds* of avatar — v4 returns the 20 that
+ * can actually stream, v3 returns the 100-entry general catalogue. So the fallback was
+ * worse than no fallback: on a v4 hiccup it would have quietly filled the picker with
+ * ids that look fine and fail at session-create, which is a bug an operator debugs at
+ * a booth rather than here.
  *
  * Returns [] on any failure: a missing avatar list must never stop the settings page
  * from loading, since every other renderer is configured from the same screen.
  */
-const AVATAR_LIST_PATHS = [
-  "https://openapi.akool.com/api/open/v4/liveAvatar/avatar/list",
-  "https://openapi.akool.com/api/open/v3/avatar/list",
-];
+const AVATAR_LIST_PATH = "https://openapi.akool.com/api/open/v4/liveAvatar/avatar/list";
 
 export async function listAkoolAvatars() {
   let auth;
@@ -133,26 +133,23 @@ export async function listAkoolAvatars() {
     return []; // no credentials yet — the picker just stays empty
   }
 
-  for (const path of AVATAR_LIST_PATHS) {
-    try {
-      const r = await fetch(path, { headers: { [auth.header]: auth.value } });
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok || (body.code && body.code !== 1000)) continue;
+  try {
+    const r = await fetch(AVATAR_LIST_PATH, { headers: { [auth.header]: auth.value } });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || (body.code && body.code !== 1000)) return [];
 
-      // The payload nests differently across Akool's list endpoints; accept either.
-      const rows = body.data?.result ?? body.data?.list ?? body.data ?? [];
-      if (!Array.isArray(rows) || !rows.length) continue;
+    // Confirmed shape: { data: { result: [ { avatar_id, name, … } ] } }. The other
+    // spellings are kept as cheap insurance against Akool moving the nesting again.
+    const rows = body.data?.result ?? body.data?.list ?? body.data ?? [];
+    if (!Array.isArray(rows)) return [];
 
-      return rows.map((a) => ({
-        id: a.avatar_id ?? a._id ?? a.id,
-        name: a.name ?? a.avatar_id ?? a._id,
-        source: path,
-      }));
-    } catch {
-      /* try the next candidate */
-    }
+    return rows.map((a) => ({
+      id: a.avatar_id ?? a._id ?? a.id,
+      name: a.name ?? a.avatar_id ?? a._id,
+    }));
+  } catch {
+    return [];
   }
-  return [];
 }
 
 /**
