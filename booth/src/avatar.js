@@ -24,6 +24,8 @@ export const avatar = {
   sampleRate: null,
   /** True when the vendor charges for the open session, not for speech (Akool). */
   billsBySession: false,
+  /** The id the server needs to end a billed session. Null for renderers without one. */
+  sessionId: null,
 
   get client() {
     return this.impl?.client ?? this.impl?.room ?? null;
@@ -42,6 +44,7 @@ export const avatar = {
     this.mode = session.mode;
     this.sampleRate = session.sampleRate;
     this.billsBySession = !!session.billsBySession;
+    this.sessionId = session.sessionId ?? null;
 
     ctx.log(`${session.label}: ${session.mode} mode${session.sampleRate ? ` @ ${session.sampleRate} Hz` : ""}`);
     await this.impl.connect(videoElementId, session, ctx);
@@ -69,10 +72,34 @@ export const avatar = {
     this.impl?.interrupt();
   },
 
+  /**
+   * Drop the stream AND end the session behind it.
+   *
+   * Leaving the room is not the same as ending the session. For a renderer billed by
+   * the open window (Akool) the meter runs until the server tells the vendor to stop,
+   * so a disconnect that only tears down WebRTC leaves a paid window running — and
+   * the next connect opens another one on top of it. The close is awaited rather than
+   * fired and forgotten, because the caller's very next act is usually to reconnect,
+   * and overlapping the two is how sessions stack.
+   */
   async disconnect() {
+    const { provider, sessionId, billsBySession } = this;
     await this.impl?.disconnect();
     this.impl = null;
     this.provider = null;
     this.mode = null;
+
+    if (billsBySession && sessionId) {
+      await fetch("/api/avatar/close", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider, sessionId }),
+      }).catch(() => {
+        // The server also closes any orphan before it opens the next session, so a
+        // failure here costs one stale window at worst rather than an unbounded leak.
+      });
+    }
+    this.sessionId = null;
+    this.billsBySession = false;
   },
 };

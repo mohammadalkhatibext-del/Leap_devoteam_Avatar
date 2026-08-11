@@ -155,9 +155,79 @@ export async function listAkoolAvatars() {
   return [];
 }
 
+/**
+ * The Akool session this booth currently has open, if any.
+ *
+ * Tracked on the server rather than only in the browser because the expensive
+ * failures are exactly the ones where the browser never gets to speak: a crashed
+ * tab, a hard refresh, a laptop lid closed at the end of the day.
+ */
+let openAkoolSession = null;
+
+/**
+ * Close a live Akool session — this, not leaving the room, is what stops the meter.
+ *
+ * Akool pre-charges the whole requested window at create time and refunds the unused
+ * remainder only when the session is closed. So a room disconnect on its own leaves a
+ * paid window running with nobody watching, and since the next visitor opens a *new*
+ * session, the windows stack: releasing on idle without closing costs more than never
+ * releasing at all. It also consumes one of the account's concurrent-session slots,
+ * so enough orphans stop the booth working, not just overspending.
+ *
+ * UNVERIFIED, like the rest of the Akool path. The endpoint follows the documented v4
+ * liveAvatar shape, and the id goes out under both spellings Akool uses across its own
+ * payloads (`_id` when it hands the session back, `id` in the close docs) because
+ * there is no key here to settle which one close wants. The full response body is
+ * returned on failure so the first run with a real key fixes this from one log line
+ * instead of a guessing loop.
+ *
+ * Never throws: this is called from teardown paths, and a failed close must not become
+ * a visible booth error. It reports instead, and the caller logs.
+ */
+export async function closeAkoolSession(sessionId = openAkoolSession) {
+  if (!sessionId) return { closed: false, skipped: true, reason: "no open Akool session" };
+
+  let auth;
+  try {
+    auth = await akoolToken();
+  } catch (err) {
+    return { closed: false, sessionId, reason: err.message };
+  }
+
+  try {
+    const r = await fetch("https://openapi.akool.com/api/open/v4/liveAvatar/session/close", {
+      method: "POST",
+      headers: { [auth.header]: auth.value, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sessionId, _id: sessionId }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || (body.code && body.code !== 1000)) {
+      // Deliberately not cleared: a transient failure should be retried at the next
+      // create, and a permanently stale id is dropped there anyway when the new
+      // session replaces it. Clearing here would turn a retryable miss into a leak.
+      return {
+        closed: false,
+        sessionId,
+        reason: `Akool ${r.status} ${JSON.stringify(body).slice(0, 200)}`,
+      };
+    }
+    if (sessionId === openAkoolSession) openAkoolSession = null;
+    return { closed: true, sessionId };
+  } catch (err) {
+    return { closed: false, sessionId, reason: err.message };
+  }
+}
+
 async function akoolSession(settings) {
   const avatarId = settings.akoolAvatarId || env("AKOOL_AVATAR_ID");
   if (!avatarId) throw new Error("AKOOL_AVATAR_ID not set in .env");
+
+  // Close whatever the last visitor left open before opening another. The browser
+  // normally closes its own session on idle-release or page-hide, but a crashed tab or
+  // a killed dev server never sends that — and every orphan bills its full window while
+  // holding a concurrency slot. Doing it here makes "one booth, one open session" true
+  // even when the client never got the chance to say goodbye.
+  if (openAkoolSession) await closeAkoolSession(openAkoolSession);
 
   const auth = await akoolToken();
   const r = await fetch("https://openapi.akool.com/api/open/v4/liveAvatar/session/create", {
@@ -187,6 +257,10 @@ async function akoolSession(settings) {
   }
   const data = body.data ?? body;
   if (!data.credentials) throw new Error("Akool returned no stream credentials");
+
+  // Remember it the moment it exists, so it can still be closed if the browser never
+  // manages to ask — the meter is already running by this line.
+  openAkoolSession = data._id ?? null;
 
   return {
     provider: "akool",
@@ -245,6 +319,9 @@ export const PROVIDERS = {
     requires: ["AKOOL_AVATAR_ID"],
     optional: ["AKOOL_API_KEY", "AKOOL_CLIENT_ID", "AKOOL_CLIENT_SECRET"],
     createSession: akoolSession,
+    // Only Akool has one. Anam and Simli stop costing when the stream ends, so there
+    // is nothing for the booth to call and nothing to get wrong by not calling it.
+    closeSession: closeAkoolSession,
   },
 };
 
@@ -295,8 +372,30 @@ export async function createSession(settings) {
     ...session,
     label: p.label,
     transport: p.transport,
+    // The id the booth quotes back to close this session. Only renderers that bill by
+    // the open window have one; for the others the field is simply absent.
+    sessionId: session.sessionId ?? null,
     // The browser decides whether to release the session on idle, so it has to be
     // told which renderers cost money for standing still.
     billsBySession: BILLS_BY_SESSION.has(id),
   };
+}
+
+/**
+ * End a session that costs money while it stays open. A no-op for the renderers that
+ * do not, so the booth can call it unconditionally on teardown rather than branching
+ * on vendor at every exit — and there are several exits, which is how the leak started.
+ *
+ * Never throws, for the same reason closeAkoolSession does not: every caller is a
+ * teardown path where the visitor is already gone.
+ */
+export async function closeSession(providerId, sessionId) {
+  const p = PROVIDERS[providerId];
+  // `skipped` separates "this renderer has no meter" from "the meter is still running".
+  // Only the second is worth a warning, and a warning that fires on every Anam teardown
+  // is one an operator learns to scroll past — including on the night it matters.
+  if (!p?.closeSession) {
+    return { closed: false, skipped: true, reason: `${providerId ?? "unknown"}: nothing to close` };
+  }
+  return p.closeSession(sessionId);
 }

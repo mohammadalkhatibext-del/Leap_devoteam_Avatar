@@ -18,7 +18,10 @@ const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
   "server",
   "settings.mjs",
 );
-const { createSession, listProviders, listAkoolAvatars } = await load("server", "providers.mjs");
+const { createSession, closeSession, listProviders, listAkoolAvatars } = await load(
+  "server",
+  "providers.mjs",
+);
 const { ensureTts, prewarmFillers, filler, speak, SpeechQueue, SAMPLE_RATE, toWav } = await load(
   "server",
   "tts.mjs",
@@ -150,6 +153,26 @@ function boothApi() {
               server.config.logger.error(`  avatar session failed: ${err.message}`);
               return json(res, 502, { error: err.message });
             }
+          }
+
+          // ---- avatar: end a session that bills while it is open --------------
+          // Distinct from the browser dropping the WebRTC room, which is the cheap
+          // half: for Akool the room is the picture and the *session* is the meter.
+          // Always answers 200 — this is called from teardown paths, including a
+          // sendBeacon from a page that is already going away, and a failed close
+          // must not surface as a booth error. It is logged loudly instead, because
+          // a close that quietly fails is a bill nobody sees until the invoice.
+          if (url.pathname === "/api/avatar/close" && req.method === "POST") {
+            const { provider, sessionId } = await readBody(req);
+            const result = await closeSession(provider, sessionId);
+            if (result.closed) {
+              server.config.logger.info(`  avatar session closed: ${result.sessionId}`);
+            } else if (!result.skipped) {
+              // A session that would not close is money still burning, and the one
+              // line an operator needs to see in a wall of dev-server output.
+              server.config.logger.error(`  avatar session NOT closed — STILL BILLING: ${result.reason}`);
+            }
+            return json(res, 200, result);
           }
 
           // Which renderers this machine can actually use, for the admin picker.

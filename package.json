@@ -9,6 +9,7 @@
     "speak": "node scripts/speak.mjs",
     "check:anam": "node scripts/check-anam.mjs",
     "check:simli": "node scripts/check-simli.mjs",
+    "check:akool": "node scripts/check-akool.mjs",
     "check:stt": "node scripts/stt-check.mjs",
     "check:voices": "node scripts/voice-check.mjs",
     "harness": "npm --prefix harness run dev",

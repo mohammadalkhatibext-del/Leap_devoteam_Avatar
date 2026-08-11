@@ -79,6 +79,25 @@ async function releaseAvatarIfIdle() {
   }
 }
 
+/**
+ * A closed tab must not leave a paid session running.
+ *
+ * `pagehide` rather than `beforeunload`: it is the one that fires reliably when a tab
+ * is closed, the browser is quit, or the machine suspends the page — which at a booth
+ * means the end of the day, the most expensive moment to leak a window. sendBeacon
+ * rather than fetch, because a normal request is cancelled as the page goes away, and
+ * that cancellation is exactly the case this handler exists to cover.
+ */
+addEventListener("pagehide", () => {
+  if (!avatar.billsBySession || !avatar.sessionId) return;
+  navigator.sendBeacon(
+    "/api/avatar/close",
+    new Blob([JSON.stringify({ provider: avatar.provider, sessionId: avatar.sessionId })], {
+      type: "application/json",
+    }),
+  );
+});
+
 /** Bring the renderer back up if it was released while nobody was here. */
 async function ensureAvatar() {
   if (avatar.client) return true;
