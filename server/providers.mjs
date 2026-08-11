@@ -161,6 +161,9 @@ export async function listAkoolAvatars() {
  */
 let openAkoolSession = null;
 
+/** The WebRTC stack we ask Akool for, and therefore the one the credentials describe. */
+const AKOOL_STREAM_TYPE = "livekit";
+
 /**
  * Close a live Akool session — this, not leaving the room, is what stops the meter.
  *
@@ -171,12 +174,16 @@ let openAkoolSession = null;
  * releasing at all. It also consumes one of the account's concurrent-session slots,
  * so enough orphans stop the booth working, not just overspending.
  *
- * UNVERIFIED, like the rest of the Akool path. The endpoint follows the documented v4
- * liveAvatar shape, and the id goes out under both spellings Akool uses across its own
- * payloads (`_id` when it hands the session back, `id` in the close docs) because
- * there is no key here to settle which one close wants. The full response body is
- * returned on failure so the first run with a real key fixes this from one log line
- * instead of a guessing loop.
+ * VERIFIED against a live key on 2026-08-11 (npm run check:akool): a session created
+ * and then closed returns HTTP 200. The id goes out under both spellings Akool uses
+ * across its own payloads (`_id` when it hands the session back, `id` in the close
+ * docs) — sending both was how this was made safe without a key, and there is no
+ * reason to narrow it now that it works.
+ *
+ * What is NOT verified is whether closing early actually refunds the unused window.
+ * That is a billing question no API response answers; it needs a credit balance read
+ * before and after. Until someone does that, `releaseAvatarWhenIdle` is a plausible
+ * saving rather than a measured one, and the admin page says so.
  *
  * Never throws: this is called from teardown paths, and a failed close must not become
  * a visible booth error. It reports instead, and the caller logs.
@@ -240,7 +247,7 @@ async function akoolSession(settings) {
       // Akool offers agora | livekit | trtc. LiveKit, because this repo already
       // depends on livekit-client for the HeyGen adapter — adding a second WebRTC
       // stack for one unverified vendor is weight the booth does not need.
-      stream_type: "livekit",
+      stream_type: AKOOL_STREAM_TYPE,
       // Akool speaks with its OWN voice — this is the field our Arabic TTS loses to.
       ...(settings.akoolVoiceId ? { voice_id: settings.akoolVoiceId } : {}),
       ...(settings.akoolLanguage ? { language: settings.akoolLanguage } : {}),
@@ -263,7 +270,11 @@ async function akoolSession(settings) {
     provider: "akool",
     mode: "text",
     sessionId: data._id,
-    streamType: data.stream_type ?? "agora",
+    // Akool does not echo stream_type back (verified 2026-08-11: the create response
+    // carries the livekit_* credentials and no stream_type field at all), so report
+    // what we asked for. The old `?? "agora"` default described a LiveKit session as
+    // Agora — the kind of wrong label that costs an hour when the video will not attach.
+    streamType: data.stream_type ?? AKOOL_STREAM_TYPE,
     credentials: data.credentials,
   };
 }

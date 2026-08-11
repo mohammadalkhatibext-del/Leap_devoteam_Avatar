@@ -15,11 +15,18 @@ import { Room, RoomEvent } from "livekit-client";
  * plain language rather than leaving an operator to discover it live.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * UNVERIFIED. No Akool credentials exist on this account, so none of this has ever
- * run against the real service. The session shape follows Akool's documented
- * endpoints (openapi.akool.com v4 liveAvatar/session/create) and the message shape
- * follows their documented chat protocol (v: 2, type "chat"), but the first person
- * with a key should expect to correct details here.
+ * PARTLY VERIFIED against a live key on 2026-08-11 (npm run check:akool):
+ *
+ *   ✓ session/create returns credentials named `livekit_url` and `livekit_token`
+ *     — the namespaced spelling this adapter reads, alongside livekit_room_name,
+ *     livekit_client_identity and livekit_server_identity.
+ *   ✓ session/close is accepted, so a session can be ended on demand.
+ *
+ *   ✗ STILL UNVERIFIED — the part below connect(): the chat protocol (v: 2,
+ *     type "chat") and the interrupt command have never been sent to a live room,
+ *     because that needs an actual WebRTC connection rather than an API call. If
+ *     the avatar connects and shows video but stays silent, this is where to look:
+ *     the message shape follows Akool's docs and nothing more.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 export function akoolAdapter() {
@@ -28,12 +35,12 @@ export function akoolAdapter() {
     room: null,
 
     async connect(videoElementId, session, { log }) {
-      // Akool namespaces the connection fields by transport — the LiveKit credentials
-      // come back as `livekit_url` / `livekit_token`, not the bare `url` / `token`
-      // this adapter originally guessed at while it had no key to test against. The
-      // Agora and TRTC shapes are namespaced the same way, so read both spellings
-      // rather than assume: a wrong guess here fails at connect time with an empty
-      // room and no useful error.
+      // Akool namespaces the connection fields by transport: the LiveKit credentials
+      // arrive as `livekit_url` / `livekit_token`, not the bare `url` / `token` this
+      // adapter originally guessed at. Confirmed against a live session on 2026-08-11.
+      // The bare spellings are kept as a fallback purely in case Akool ever flattens
+      // the shape — a wrong guess here fails at connect time with an empty room and
+      // no useful error, which is why the throw below names the fields it actually got.
       const c = session.credentials ?? {};
       const url = c.livekit_url ?? c.url;
       const token = c.livekit_token ?? c.token;
