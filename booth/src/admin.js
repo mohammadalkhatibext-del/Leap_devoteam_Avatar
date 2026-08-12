@@ -1,5 +1,4 @@
-import "./style.css";
-import { initTheme, toggleTheme } from "./theme.js";
+import { initTheme, toggleTheme, currentTheme } from "./theme.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -527,11 +526,20 @@ $("restore").onclick = async () => {
   status("Restored to the tested defaults", "ok");
 };
 
-$("themeBtn").onclick = () => toggleTheme();
+/* The button says which theme is active rather than showing a glyph, so it has a real
+   accessible name and an operator can tell the current state without squinting. */
+function labelTheme() {
+  $("themeBtn").textContent = currentTheme() === "dark" ? "Theme: dark" : "Theme: light";
+}
+$("themeBtn").onclick = () => {
+  toggleTheme();
+  labelTheme();
+};
 
 /* -------------------------------------------------------------------- init */
 
 initTheme();
+labelTheme();
 
 async function boot() {
   const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([

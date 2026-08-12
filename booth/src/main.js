@@ -1,9 +1,14 @@
-import "./style.css";
 import { avatar } from "./avatar.js";
 import { Mic } from "./mic.js";
 import { fromBase64, durationMs } from "./audio.js";
 import { currentLang, setLang, applyLang, t } from "./i18n.js";
-import { initTheme, toggleTheme } from "./theme.js";
+import { initTheme } from "./theme.js";
+
+// The pre-paint script in index.html already stamped data-theme, so this is not what
+// avoids a flash — it is what swaps the wordmark to the variant that survives on the
+// current ground. The booth has no theme control of its own: the switch lives in
+// Settings, and the booth reads the choice on load.
+initTheme();
 
 const SAMPLE_RATE = __SAMPLE_RATE__;
 const $ = (id) => document.getElementById(id);
@@ -15,6 +20,7 @@ let S = t(lang); // UI strings for the page language
 let sessionId = crypto.randomUUID();
 let busy = false;
 let hasConversation = false;
+let usable = false; // the booth has connected at least once and can take a question
 let settings = { idleResetMinutes: 5 };
 
 /* ------------------------------------------------------------------- logging */
@@ -29,10 +35,43 @@ function log(msg, isError = false) {
 }
 const ctx = { log };
 
-function setState(key, cls = "") {
-  $("state").textContent = S[key] ?? key;
-  $("dot").className = `dot ${cls}`;
+/* ----------------------------------------------------------------- phases */
+
+/**
+ * What the booth is doing, as one value.
+ *
+ * Previously this lived across `busy`, a status string and four separate `disabled`
+ * toggles, which meant no stylesheet could describe a state — every appearance change
+ * had to be another imperative DOM write. Writing it to `data-phase` on <body> instead
+ * puts all seven states in CSS, where they belong, and leaves this file deciding only
+ * *which* state we are in.
+ *
+ * The badge word is not decoration: it is what makes the state readable to someone who
+ * cannot tell the dot colours apart, and to a screen reader via role="status".
+ */
+const PHASES = {
+  boot: { badge: "notConnected", dot: "" },
+  attract: { badge: "ready", dot: "live" },
+  connecting: { badge: "connecting", dot: "busy" },
+  ready: { badge: "ready", dot: "live" },
+  listening: { badge: "hearing", dot: "busy" },
+  thinking: { badge: "thinking", dot: "busy" },
+  speaking: { badge: "speaking", dot: "live" },
+};
+
+let phase = "boot";
+
+function setPhase(next) {
+  phase = next;
+  document.body.dataset.phase = next;
+  const p = PHASES[next] ?? PHASES.ready;
+  $("state").textContent = S[p.badge] ?? p.badge;
+  $("dot").className = `dot ${p.dot}`;
+
 }
+
+/** Back to whichever resting state matches where the visitor is in the conversation. */
+const rest = () => setPhase(hasConversation ? "ready" : "attract");
 
 /* --------------------------------------------------------------- idle reset */
 
@@ -71,8 +110,7 @@ async function releaseAvatarIfIdle() {
   if (!settings.releaseAvatarWhenIdle || !avatar.billsBySession || !avatar.client) return;
   try {
     await avatar.disconnect();
-    $("placeholder").style.display = "";
-    setState("ready", "live");
+    setFace(false);
     log("session released — no charge while the stand is empty");
   } catch (err) {
     log(`could not release the session: ${err.message}`, true);
@@ -98,19 +136,96 @@ addEventListener("pagehide", () => {
   );
 });
 
-/** Bring the renderer back up if it was released while nobody was here. */
-async function ensureAvatar() {
-  if (avatar.client) return true;
-  setState("connecting", "busy");
+/* --------------------------------------------------------------- the picture */
+
+/**
+ * Whether there is actually a face on screen.
+ *
+ * Tracked separately from the phase, and measured rather than inferred. `connect()`
+ * resolving is not proof of a picture: the token endpoint hands one out freely, and
+ * the vendor can still refuse the stream afterwards — Anam caps concurrent sessions,
+ * so a tab left open elsewhere makes the next connect return a token that leads
+ * nowhere. The old code trusted the resolve, so the booth would sit on a black
+ * rectangle insisting it was listening.
+ *
+ * A <video> that is genuinely painting has non-zero intrinsic dimensions and is past
+ * HAVE_CURRENT_DATA. Nothing else reliably distinguishes "connected" from "connected
+ * to silence".
+ */
+const videoLive = () => {
+  const v = $("avatar");
+  return v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0;
+};
+
+function setFace(live) {
+  document.body.dataset.face = live ? "live" : "none";
+}
+
+/** Resolve once the video paints, or false if it never does. */
+function waitForPicture(timeoutMs = 9000) {
+  if (videoLive()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const v = $("avatar");
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      clearInterval(poll);
+      clearTimeout(timer);
+      for (const ev of EVENTS) v.removeEventListener(ev, onEvent);
+      resolve(ok);
+    };
+    const onEvent = () => videoLive() && finish(true);
+    const EVENTS = ["loadeddata", "playing", "resize", "canplay"];
+    for (const ev of EVENTS) v.addEventListener(ev, onEvent);
+    // Belt and braces: some renderers attach a track without firing anything useful.
+    const poll = setInterval(onEvent, 250);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+  });
+}
+
+/**
+ * If the stream dies mid-session the picture goes with it, and the booth has to notice.
+ * A visitor mid-question should be told the answer is coming as text, not left looking
+ * at a black panel.
+ */
+for (const ev of ["emptied", "ended", "stalled", "suspend"]) {
+  $("avatar").addEventListener(ev, () => {
+    if (document.body.dataset.face === "live" && !videoLive()) {
+      setFace(false);
+      log("picture lost — continuing as text", true);
+    }
+  });
+}
+
+/** Bring the renderer up, or back up if it was released while nobody was here. */
+async function ensureAvatar({ quiet = false } = {}) {
+  if (avatar.client && videoLive()) return true;
+  if (!quiet) setPhase("connecting");
   try {
     await avatar.connect("avatar", ctx);
-    $("placeholder").style.display = "none";
+    usable = true;
+    enableControls(true);
+    // Connecting is not the same as seeing something. Wait for real frames before
+    // claiming there is a face.
+    const painted = await waitForPicture();
+    setFace(painted);
+    if (!painted) {
+      log("connected, but no video arrived — check for another open session", true);
+      return false;
+    }
     return true;
   } catch (err) {
-    log(`reconnect failed: ${err.message}`, true);
-    setState("connectFailed");
+    log(`connect failed: ${err.message}`, true);
+    setFace(false);
     return false;
   }
+}
+
+function enableControls(on) {
+  $("talk").disabled = !on;
+  $("q").disabled = !on;
+  $("reset").disabled = !on;
 }
 
 async function newVisitor({ automatic = false } = {}) {
@@ -123,32 +238,43 @@ async function newVisitor({ automatic = false } = {}) {
   hasConversation = false;
   touch();
   $("subtitle").textContent = automatic ? S.idleReset : "";
-  $("citations").innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
+  showSources(null);
   $("metrics").textContent = "";
   log(automatic ? `idle ${settings.idleResetMinutes}m — conversation cleared` : "new visitor");
+
   if (automatic) {
-    setTimeout(() => ($("subtitle").textContent = ""), 6000);
+    // Let the goodbye sit for a moment before the screen returns to the invitation.
+    setTimeout(() => {
+      $("subtitle").textContent = "";
+      if (!busy) rest();
+    }, 6000);
     // Only on the automatic path: a staffer pressing "new visitor" is telling us
     // somebody is standing there right now, and dropping the session in front of
     // them would make the booth look broken at exactly the wrong moment.
     await releaseAvatarIfIdle();
+  } else {
+    rest();
   }
 }
 
 /* ------------------------------------------------------------------ ask flow */
 
 async function askQuestion(question, spokenLanguage = null) {
-  if (busy) return;
-  // The session may have been released while the stand was empty. Bring it back
-  // before anything else — the visitor is mid-question and must not see a dead screen.
-  if (!(await ensureAvatar())) return;
+  if (busy || !usable) return;
   busy = true;
   touch();
   $("q").value = "";
   $("subtitle").textContent = "";
-  $("citations").innerHTML = `<p class="empty">…</p>`;
-  setState("thinking", "busy");
+  showSources(null);
+  setPhase("thinking");
   log(`Q: ${question}`);
+
+  // The session may have been released while the stand was empty, or the renderer may
+  // have dropped. Either way the answer engine is a separate service and still works,
+  // so a failure here downgrades to text rather than refusing the question — the
+  // visitor is mid-sentence and must not be met with a dead screen.
+  const hasFace = await ensureAvatar({ quiet: true });
+  if (!hasFace) log("answering without the avatar — text only", true);
 
   avatar.begin(SAMPLE_RATE, ctx);
 
@@ -159,7 +285,7 @@ async function askQuestion(question, spokenLanguage = null) {
   const speakClip = (pcm, text, isFiller) => {
     playHead = playHead.then(async () => {
       if (!isFiller) $("subtitle").textContent = text;
-      setState("speaking", "live");
+      setPhase("speaking");
       avatar.push(pcm, ctx);
       await new Promise((r) => setTimeout(r, durationMs(pcm, SAMPLE_RATE)));
     });
@@ -172,26 +298,34 @@ async function askQuestion(question, spokenLanguage = null) {
     const es = new EventSource(`/api/ask?${params}`);
 
     es.addEventListener("sentence", (e) => {
-      // Text-mode renderers (Akool) speak our text in their own voice — there is no
-      // audio to push, so the sentence itself is the payload and the subtitle is
-      // driven from here rather than from clip playback.
-      if (avatar.mode !== "text") return;
       const { text } = JSON.parse(e.data);
-      $("subtitle").textContent = text;
-      setState("speaking", "live");
-      avatar.say(text, ctx);
+      // Text-mode renderers (Akool) speak our text in their own voice — there is no
+      // audio to push, so the sentence itself is the payload.
+      if (avatar.mode === "text") {
+        $("subtitle").textContent = text;
+        setPhase("speaking");
+        avatar.say(text, ctx);
+        return;
+      }
+      // No renderer at all: the sentence stream is the only thing left to show, so
+      // it drives the subtitle directly.
+      if (!avatar.client) {
+        $("subtitle").textContent = text;
+        setPhase("speaking");
+      }
     });
 
     es.addEventListener("audio", (e) => {
-      // Our TTS is unused in text mode; ignore the clips rather than double-speaking.
-      if (avatar.mode === "text") return;
+      // Our TTS is unused in text mode, and there is nothing to play it into when the
+      // renderer is down. Ignore the clips rather than double-speaking.
+      if (avatar.mode === "text" || !avatar.client) return;
       const { pcm, text, filler } = JSON.parse(e.data);
       speakClip(fromBase64(pcm), text, filler);
     });
 
     es.addEventListener("done", (e) => {
       const d = JSON.parse(e.data);
-      renderCitations(d.citations, d.grounded);
+      showSources(d.citations, d.grounded);
       $("metrics").textContent =
         `first token ${d.timing.firstTokenMs}ms · answer ${d.timing.totalMs}ms · ` +
         `cache read ${d.usage.cacheRead} · out ${d.usage.output} · ${d.language}`;
@@ -217,30 +351,66 @@ async function askQuestion(question, spokenLanguage = null) {
 
   await playHead; // let the last clip finish before returning to idle
   avatar.end();
-  setState("ready", "live");
-  touch();
   busy = false;
+  touch();
+  rest();
 }
 
-function renderCitations(citations, grounded) {
-  const el = $("citations");
-  if (!citations?.length) {
-    // Worth surfacing rather than hiding: an ungrounded answer is exactly the case
-    // booth staff need to notice, because it is the one that could be wrong.
-    el.innerHTML = `<p class="empty">${grounded ? S.noSources : S.ungrounded}</p>`;
+/* ----------------------------------------------------------------- sources */
+
+/**
+ * Sources are one tap away rather than permanently on screen.
+ *
+ * Booth staff need to check what an answer was built on — an ungrounded answer is
+ * exactly the one that could be wrong — but a visitor reading a face does not, and
+ * a standing panel of quotes was competing with the answer itself for attention.
+ * The count stays visible so nobody has to guess whether there is anything to open.
+ */
+function showSources(citations, grounded = true) {
+  const btn = $("sourcesBtn");
+  const panel = $("sources");
+  const list = $("citations");
+
+  if (!citations) {
+    btn.hidden = true;
+    panel.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    list.innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
     return;
   }
-  el.innerHTML = "";
-  for (const c of citations) {
-    const div = document.createElement("div");
-    div.className = "cite";
-    div.innerHTML = `<b></b><span></span>`;
-    div.querySelector("b").textContent = c.title ?? "—";
-    div.querySelector("span").textContent =
-      c.quote?.length > 220 ? `${c.quote.slice(0, 220)}…` : (c.quote ?? "");
-    el.appendChild(div);
+
+  list.innerHTML = "";
+  if (!citations.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = grounded ? S.noSources : S.ungrounded;
+    list.appendChild(p);
+  } else {
+    for (const c of citations) {
+      const div = document.createElement("div");
+      div.className = "cite";
+      const b = document.createElement("b");
+      const span = document.createElement("span");
+      b.textContent = c.title ?? "—";
+      span.textContent =
+        c.quote?.length > 220 ? `${c.quote.slice(0, 220)}…` : (c.quote ?? "");
+      div.append(b, span);
+      list.appendChild(div);
+    }
   }
+
+  // Label first, then reveal. The count *is* the button's accessible name, so
+  // revealing it a frame early puts an unnamed control in the accessibility tree.
+  $("sourcesCount").textContent = `${S.sourcesCount} · ${citations.length}`;
+  btn.hidden = false;
 }
+
+$("sourcesBtn").onclick = () => {
+  const open = $("sourcesBtn").getAttribute("aria-expanded") === "true";
+  $("sourcesBtn").setAttribute("aria-expanded", String(!open));
+  $("sources").hidden = open;
+  touch();
+};
 
 /* --------------------------------------------------------------------- mic */
 
@@ -256,29 +426,31 @@ $("talk").onclick = async () => {
   const btn = $("talk");
   btn.classList.add("listening");
   $("talkLabel").textContent = S.listening;
-  setState("hearing", "busy");
+  setPhase("listening");
 
   let clip = null;
   try {
     clip = await mic.listen({
-      onLevel: (v) => ($("meterFill").style.width = `${v * 100}%`),
+      // Drives the glow around the button rather than a bar across it: this is
+      // ambient "I can hear you" feedback, not a measurement anyone reads.
+      onLevel: (v) => btn.style.setProperty("--level", v.toFixed(3)),
       onSpeechStart: () => ($("talkLabel").textContent = S.speakNow),
     });
   } catch (err) {
     log(`mic failed: ${err.message}`, true);
   } finally {
     btn.classList.remove("listening");
+    btn.style.setProperty("--level", "0");
     $("talkLabel").textContent = S.talk;
-    $("meterFill").style.width = "0%";
   }
 
   if (!clip) {
-    setState("ready", "live");
+    rest();
     log("heard nothing");
     return;
   }
 
-  setState("transcribing", "busy");
+  setPhase("thinking");
   try {
     const res = await fetch("/api/stt", {
       method: "POST",
@@ -293,7 +465,7 @@ $("talk").onclick = async () => {
       // avatar has no way to tell "didn't hear you" from "crashed".
       log("transcript empty", true);
       $("subtitle").textContent = S.heardNothing;
-      setState("ready", "live");
+      rest();
       return;
     }
 
@@ -301,34 +473,16 @@ $("talk").onclick = async () => {
       .map((c) => `${c.language} ${c.confidence.toFixed(2)}`)
       .join(", ");
     log(`heard [${data.language}] (${considered}, ${data.ms}ms): ${data.transcript}`);
-    $("q").value = data.transcript;
 
     // The language the visitor actually spoke wins over the page language.
     await askQuestion(data.transcript, data.language);
   } catch (err) {
     log(`stt failed: ${err.message}`, true);
-    setState("ready", "live");
+    rest();
   }
 };
 
 /* ----------------------------------------------------------------- wiring */
-
-$("connect").onclick = async () => {
-  $("connect").disabled = true;
-  setState("connecting", "busy");
-  try {
-    await avatar.connect("avatar", ctx);
-    $("placeholder").style.display = "none";
-    for (const id of ["q", "talk", "interrupt", "reset"]) $(id).disabled = false;
-    $("q").focus();
-    setState("ready", "live");
-    touch();
-  } catch (err) {
-    log(`connect failed: ${err.message}`, true);
-    setState("connectFailed");
-    $("connect").disabled = false;
-  }
-};
 
 $("q").addEventListener("keydown", (e) => {
   // A typed question carries no spoken language, so it falls back to the page's.
@@ -337,26 +491,71 @@ $("q").addEventListener("keydown", (e) => {
 
 $("interrupt").onclick = () => {
   avatar.interrupt();
-  setState("ready", "live");
+  rest();
   touch();
   log("interrupted");
 };
 
-$("reset").onclick = () => newVisitor();
-
 $("langBtn").onclick = () => setLang(lang === "ar" ? "en" : "ar");
-$("themeBtn").onclick = () => log(`theme: ${toggleTheme()}`);
 
 for (const el of ["talk", "q", "avatar"].map($)) {
   el?.addEventListener("pointerdown", touch);
 }
 
+/* ---------------------------------------------------------------- operator */
+
+/**
+ * Booth staff surface. Hidden by default — the log, the timings and the provider
+ * state are what staff need to tell a mic failure from a network one, and none of
+ * it is something a visitor at LEAP should be reading next to the answer.
+ *
+ * Two ways in, because a kiosk usually has no keyboard: a deliberate long press on
+ * the logo, or Ctrl+Shift+O on the laptop it gets configured from. Neither is
+ * reachable by tapping around.
+ */
+const LONG_PRESS_MS = 1500;
+let pressTimer = 0;
+
+function setOperator(open) {
+  $("operator").hidden = !open;
+  if (open) $("operatorClose").focus();
+}
+
+const logo = document.querySelector(".masthead .logo");
+const startPress = () => {
+  pressTimer = setTimeout(() => setOperator(true), LONG_PRESS_MS);
+};
+const cancelPress = () => clearTimeout(pressTimer);
+if (logo) {
+  logo.addEventListener("pointerdown", startPress);
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+    logo.addEventListener(ev, cancelPress);
+  }
+  // A long press on an image is a drag gesture by default, which cancels the press.
+  logo.addEventListener("dragstart", (e) => e.preventDefault());
+}
+
+addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && e.code === "KeyO") {
+    e.preventDefault();
+    setOperator($("operator").hidden);
+  }
+  if (e.key === "Escape" && !$("operator").hidden) setOperator(false);
+});
+
+$("operatorClose").onclick = () => setOperator(false);
+$("connect").onclick = async () => {
+  $("connect").disabled = true;
+  await ensureAvatar();
+  $("connect").disabled = false;
+  rest();
+};
+$("reset").onclick = () => newVisitor();
 /* -------------------------------------------------------------------- init */
 
-initTheme();
 S = applyLang(lang);
-$("placeholder").textContent = S.connect;
-$("citations").innerHTML = `<p class="empty">${S.sourcesEmpty}</p>`;
+showSources(null);
+setPhase("boot");
 
 const suggest = $("suggest");
 for (const s of S.suggestions) {
@@ -366,6 +565,23 @@ for (const s of S.suggestions) {
   suggest.appendChild(b);
 }
 
+/**
+ * The badge and the stop button sit above the glass sheet, and the sheet's height
+ * depends on how the suggestion chips wrap — which changes with language and screen
+ * width. Measuring it beats guessing: a hard-coded offset overlaps the sheet on the one
+ * screen size nobody tested on. (The transcript and its sources moved to the rail and
+ * are no longer part of this stack.)
+ */
+const sheet = $("sheet");
+new ResizeObserver(([entry]) => {
+  // borderBoxSize, not contentRect: the sheet carries ~18px of padding top and bottom
+  // plus a 1px border, so the content box is ~37px shorter than the thing on screen.
+  // Positioning against the content box tucked the badge and the stop button under
+  // the sheet's own padding.
+  const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--sheet-h", `${Math.round(h)}px`);
+}).observe(sheet);
+
 fetch("/api/settings")
   .then((r) => r.json())
   .then((s) => {
@@ -373,3 +589,17 @@ fetch("/api/settings")
     log(`ready — idle reset ${s.idleResetMinutes}m, voice ${lang === "en" ? s.voiceEn : s.voiceAr}`);
   })
   .catch(() => log("ready"));
+
+// No Start button. A visitor at a stand does not press Start — they walk up and talk,
+// so the session opens on load and the attract screen is what fills the wait.
+(async () => {
+  setPhase("connecting");
+  const painted = await ensureAvatar({ quiet: true });
+  if (painted) log("connected");
+  // Either way the booth is open for questions: the answer engine is independent of
+  // the renderer, so a missing picture costs the face, not the service. `data-face`
+  // is already set, and the stage says so without blanking the screen.
+  usable = true;
+  enableControls(true);
+  setPhase("attract");
+})();

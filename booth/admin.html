@@ -4,7 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Devoteam — Booth settings</title>
-    <link rel="icon" href="/brand/devoteam-color.svg" />
+    <link rel="icon" href="/brand/devoteam-mark.svg" />
+
+    <!-- Same reason as the booth page: `font-display: optional` needs the file
+         already in flight, or a cold load silently keeps the fallback. This page is
+         English, so only the Latin face is on the critical path. -->
+    <link rel="preload" href="/fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Linked, not imported from JS. As a module import the stylesheet only arrives
+         once the module graph resolves, which leaves a window where the page paints
+         with no CSS at all — a giant logo and Times New Roman. A <link> is
+         render-blocking, so that window does not exist. Vite still processes and
+         hashes it for the build. -->
+    <link rel="stylesheet" href="/src/style.css" />
+
     <script>
       document.documentElement.setAttribute(
         "data-theme",
@@ -17,27 +30,31 @@
       .wrap { max-width: 940px; margin: 0 auto; padding-bottom: 96px; }
       .section { margin-bottom: 18px; }
       .section > h2 {
-        font-size: 1.05rem; font-weight: 600; margin: 0 0 4px;
+        font-size: var(--text-h5); font-weight: 600; margin: 0 0 4px;
       }
       .section > .lead {
-        color: var(--text-muted); font-size: .87rem; margin: 0 0 18px; line-height: 1.55;
+        color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 18px; line-height: 1.55;
       }
       .field { margin-bottom: 18px; }
       .field:last-child { margin-bottom: 0; }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
       @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
 
-      .choices { display: flex; gap: 8px; flex-wrap: wrap; }
+      .choices { display: flex; gap: 12px; flex-wrap: wrap; }
       .choices button {
-        flex: 1; min-width: 120px; padding: 12px 14px; font-weight: 500; font-size: .92rem;
+        flex: 1; min-width: 120px; padding: 12px 14px; font-weight: 500; font-size: var(--text-base);
         background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         text-align: start; line-height: 1.35;
       }
-      .choices button small { display: block; color: var(--text-muted); font-size: .76rem; margin-top: 3px; }
+      .choices button small { display: block; color: var(--text-muted); font-size: var(--text-micro); margin-top: 3px; }
+      /* Canon poppy under a 16px white label is 3.45:1 and fails; §1.4's deepened
+         variant is the fill that carries a standard-size label. */
       .choices button[aria-pressed="true"] {
-        background: var(--dv-poppy); border-color: var(--dv-poppy); color: #fff;
+        background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent);
       }
-      .choices button[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
+      /* Full white, not 85%: at 12px the dimmed version drops to 3.8:1 on this fill.
+         The smaller size already carries the demotion without help from opacity. */
+      .choices button[aria-pressed="true"] small { color: var(--on-accent); }
 
       .toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
       .toggle input { width: auto; }
@@ -51,13 +68,16 @@
         border-radius: var(--radius-card); padding: 14px 18px; box-shadow: var(--shadow);
       }
       .savebar .spacer { flex: 1; }
-      .status { font-size: .85rem; color: var(--text-muted); }
-      .status.ok { color: var(--dv-fresh-mint); }
-      .status.err { color: var(--dv-poppy); }
+      /* Role tokens, not brand tokens: canon poppy is 3.45:1 on the light surface and
+         also happens to be the CTA colour, so status was borrowing the accent to mean
+         "failed". Both are fixed by naming the job instead of the hue. */
+      .status { font-size: var(--text-sm); color: var(--text-muted); }
+      .status.ok { color: var(--success); }
+      .status.err { color: var(--critical-icon); font-weight: 600; }
 
       .preview {
         background: var(--surface-sunken); border-radius: var(--radius-button);
-        padding: 14px 16px; font-size: .9rem; line-height: 1.6; color: var(--text-muted);
+        padding: 14px 16px; font-size: var(--text-base); line-height: 1.6; color: var(--text-muted);
       }
       .preview b { color: var(--text); font-weight: 600; }
 
@@ -68,24 +88,27 @@
       }
       .testrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
       .testrow .spacer { flex: 1; }
-      .choices.compact button { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: .85rem; }
+      .choices.compact button { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: var(--text-sm); }
 
       .results:not(:empty) { margin-top: 14px; display: grid; gap: 8px; }
       .result {
         display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: var(--radius-button); padding: 10px 14px; font-size: .88rem;
+        border-radius: var(--radius-button); padding: 10px 14px; font-size: var(--text-sm);
       }
       /* The engine that is about to go live should be findable at a glance in a list
          of four near-identical rows. */
-      .result.chosen { border-color: var(--dv-poppy); }
+      .result.chosen { border-color: var(--accent); }
       .result .name { font-weight: 600; min-width: 108px; }
-      .result .meta { color: var(--text-muted); font-size: .8rem; }
+      .result .meta { color: var(--text-muted); font-size: var(--text-micro); }
       .result .said { flex: 1 1 100%; line-height: 1.5; }
       .result .said:dir(rtl) { text-align: right; }
-      .result.bad { border-color: var(--dv-poppy); }
-      .result.bad .meta { color: var(--dv-poppy); }
-      .result button { padding: 7px 12px; font-size: .82rem; }
+      /* A failed row and the chosen row were both wearing the brand red, which made
+         "this one is live" and "this one is broken" the same signal. The failure now
+         carries the critical colour, and the word in .meta says which it is. */
+      .result.bad { border-color: var(--critical-icon); }
+      .result.bad .meta { color: var(--critical-icon); }
+      .result button { padding: 7px 12px; font-size: var(--text-sm); }
       .result .spacer { flex: 1; }
     </style>
   </head>
@@ -98,7 +121,9 @@
           <div class="where">Changes apply to the next question — no restart needed</div>
         </div>
         <div class="spacer"></div>
-        <button class="chip" id="themeBtn">◐</button>
+        <!-- Real text, not "◐". A screen reader announced the character; admin.js
+             keeps the label in step with the current theme. -->
+        <button class="chip" id="themeBtn">Theme</button>
         <a class="chip" href="/">← Back to booth</a>
       </header>
 
@@ -185,7 +210,7 @@
               reconnects automatically — a few seconds, spent while the visitor is
               still talking. Leave this off for Anam and Simli, which are not billed
               this way.
-              <b style="color: var(--dv-intense-fire)"
+              <b style="color: var(--warning)"
                 >Run <code>npm run check:akool</code> before trusting this.</b
               >
               It only saves money if Akool refunds the unused window on close, which

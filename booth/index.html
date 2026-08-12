@@ -1,158 +1,221 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-surface="booth">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Devoteam — LEAP</title>
-    <link rel="icon" href="/brand/devoteam-color.svg" />
-    <!-- Set the surface before first paint so the booth never flashes the wrong theme. -->
+
+    <!-- §3 allows the brandmark alone as a favicon, where the word "Devoteam" is
+         already present nearby. The full lockup is illegible at 16px. -->
+    <link rel="icon" href="/brand/devoteam-mark.svg" />
+
+    <!-- Every weight the first paint actually uses has to be preloaded, not just the
+         obvious ones. §2.1 asks for `font-display: optional`, which gives a face about
+         100ms to arrive and then abandons it for the rest of the page's life — and a
+         kiosk's page life is the whole day. Missing one weight here does not degrade
+         it slightly; it silently drops that weight to a system fallback until someone
+         reloads the browser.
+
+         Arabic needs three: 400 (body), 500 (chips and the subtitle) and 700 (the
+         emphasised word, badge and button). Montserrat is variable, so a single file
+         covers 300–800 of the Latin. ~65 kB in parallel on a same-origin connection,
+         once, then cached for the event. -->
+    <link rel="preload" href="/fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/tajawal-arabic-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/tajawal-arabic-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/tajawal-arabic-700.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Linked, not imported from JS. As a module import the stylesheet only arrives
+         once the module graph resolves, which leaves a window where the page paints
+         with no CSS at all — a giant logo and Times New Roman. A <link> is
+         render-blocking, so that window does not exist. Vite still processes and
+         hashes it for the build. -->
+    <link rel="stylesheet" href="/src/style.css" />
+
+    <!-- Applied before first paint so the page never flashes the wrong surround. The
+         theme governs the chrome — page ground, masthead, rail — and not the stage,
+         which is video or a dark stand-in for video and stays dark in both. The switch
+         itself lives in Settings: this is a kiosk, and a visitor has no business
+         changing the booth's appearance. -->
     <script>
       document.documentElement.setAttribute(
         "data-theme",
         localStorage.getItem("devoteam-theme") || "dark",
       );
     </script>
-    <style>
-      /* `min-height`, not `height`: on a short screen a fixed height silently clips
-         the log and sources cards instead of letting the page scroll. The booth panel
-         is tall, but the laptop it gets configured on is not. */
-      .layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1.3fr) minmax(330px, 0.7fr);
-        gap: 20px;
-        min-height: calc(100vh - 130px);
-      }
-      @media (max-width: 1040px) {
-        .layout { grid-template-columns: 1fr; }
-      }
-      /* Keep the avatar looking like a person rather than a letterbox when the
-         column is much taller or shorter than the video. */
-      .stage { min-height: 420px; aspect-ratio: 16 / 10; }
-
-      /* `.card.stage`, not `.stage`: style.css is imported from main.js and so lands
-         after this block, which means a bare `.stage` loses to `.card` on order and
-         the video area renders as a light panel — with white placeholder text on it,
-         invisible. The stage is always black because it is video, in either theme. */
-      .card.stage {
-        border-radius: var(--radius-hero);
-        background: #000;
-        border-color: transparent;
-        position: relative;
-        overflow: hidden;
-        padding: 0;
-      }
-      video { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .placeholder {
-        position: absolute; inset: 0; display: grid; place-items: center;
-        color: rgba(255,255,255,.72); font-size: .9rem; text-align: center; padding: 24px;
-      }
-
-      /* Subtitles over the video: a hall is loud, and some visitors will read
-         rather than hear. */
-      .subtitle {
-        position: absolute; inset-inline: 0; bottom: 0;
-        padding: 20px 28px 26px; color: #fff;
-        background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,0));
-        font-size: 1.35rem; line-height: 1.5; min-height: 96px;
-      }
-      .subtitle:empty { background: none; }
-
-      .badge {
-        position: absolute; inset-inline-start: 18px; top: 18px;
-        display: inline-flex; align-items: center; gap: 8px;
-        font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-        padding: 6px 12px; border-radius: 999px;
-        background: rgba(0,0,0,.6); color: rgba(255,255,255,.8);
-      }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: #777; }
-      .dot.live { background: var(--dv-fresh-mint); }
-      .dot.busy { background: var(--dv-intense-fire); }
-
-      .side { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-
-      /* Push-to-talk is the primary control, so it gets the size and the brand
-         colour; typing is the fallback for a hall too loud to speak over. */
-      .talk {
-        width: 100%; margin-top: 18px; padding: 18px 20px;
-        display: flex; flex-direction: column; align-items: center; gap: 12px;
-        font-size: 1.1rem; background: var(--dv-poppy); border-radius: var(--radius-card);
-      }
-      .talk:hover:not(:disabled) { background: #e33a51; }
-      .talk.listening { background: var(--dv-fresh-mint); color: #06281c; }
-      .meter { width: 100%; height: 5px; border-radius: 3px; background: rgba(0,0,0,.28); overflow: hidden; }
-      .meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width .08s linear; }
-
-      .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-      .suggest button {
-        font-size: .85rem; font-weight: 400; padding: 7px 13px;
-        background: var(--surface-2); color: var(--text); border: 1px solid var(--border-soft);
-      }
-      .suggest button:hover { background: var(--surface-sunken); }
-
-      .panel { flex: 1; min-height: 0; overflow-y: auto; }
-      .cite { border-inline-start: 3px solid var(--dv-poppy); padding: 2px 12px; margin-bottom: 14px; }
-      .cite b {
-        display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
-        color: var(--dv-poppy); font-weight: 700; margin-bottom: 3px;
-      }
-      .cite span { font-size: .82rem; color: var(--text-muted); }
-    </style>
   </head>
-  <body>
-    <header class="topbar">
-      <img class="logo" data-logo src="/brand/devoteam-color-on-dark.svg" alt="Devoteam" />
-      <div>
-        <h1 data-t="title">مساعد ديفوتيم</h1>
-        <div class="where" data-t="subtitle">LEAP — الرياض</div>
-      </div>
-      <div class="spacer"></div>
-      <button class="chip" id="langBtn" data-t="switchLang">English</button>
-      <button class="chip" id="themeBtn">◐</button>
-      <a class="chip" id="adminLink" href="/admin.html" data-t="admin">الإعدادات</a>
-    </header>
 
-    <div class="layout">
-      <div class="card stage">
-        <div class="badge"><span class="dot" id="dot"></span><span id="state" data-t="notConnected">غير متصل</span></div>
-        <video id="avatar" autoplay playsinline></video>
-        <!-- Simli and Akool send audio back over WebRTC and need a real element to
-             play it through; Anam handles its own. Harmless when unused. -->
-        <audio id="avatar-audio" autoplay></audio>
-        <div class="placeholder" id="placeholder"></div>
-        <div class="subtitle" id="subtitle"></div>
-      </div>
+  <!-- Two independent axes. `data-phase` is what the booth is doing; `data-face` is
+       whether there is a live picture. Keeping them apart is what lets the stage stay
+       honest — a renderer that never arrives no longer leaves a black rectangle that
+       claims to be listening. -->
+  <body class="booth" data-phase="boot" data-face="none">
+    <!-- Icon set. Four glyphs is the whole requirement here, so they ship inline
+         rather than pulling in a library: single stroke weight, currentColor, and
+         no filled circles behind them — §7.3. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <path d="M12 19v3" />
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m6 9 6 6 6-6" />
+      </symbol>
+      <!-- A cog, not a sun. The previous version was a circle with eight radiating
+           spokes, which at 19px reads as a brightness control — the wrong affordance
+           on a button that opens settings. This is a toothed gear outline. -->
+      <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3.1" />
+        <path d="M19.5 13.6a1.55 1.55 0 0 0 .31 1.71l.06.05a1.87 1.87 0 1 1-2.65 2.65l-.05-.06a1.55 1.55 0 0 0-1.71-.31 1.55 1.55 0 0 0-.94 1.42v.16a1.87 1.87 0 1 1-3.74 0v-.09a1.55 1.55 0 0 0-1-1.41 1.55 1.55 0 0 0-1.71.31l-.05.06a1.87 1.87 0 1 1-2.65-2.65l.06-.05a1.55 1.55 0 0 0 .31-1.71 1.55 1.55 0 0 0-1.42-.94h-.16a1.87 1.87 0 1 1 0-3.74h.09a1.55 1.55 0 0 0 1.41-1 1.55 1.55 0 0 0-.31-1.71l-.06-.05a1.87 1.87 0 1 1 2.65-2.65l.05.06a1.55 1.55 0 0 0 1.71.31h.07a1.55 1.55 0 0 0 .94-1.42v-.16a1.87 1.87 0 1 1 3.74 0v.09a1.55 1.55 0 0 0 .94 1.42 1.55 1.55 0 0 0 1.71-.31l.05-.06a1.87 1.87 0 1 1 2.65 2.65l-.06.05a1.55 1.55 0 0 0-.31 1.71v.07a1.55 1.55 0 0 0 1.42.94h.16a1.87 1.87 0 1 1 0 3.74h-.09a1.55 1.55 0 0 0-1.42.94z" />
+      </symbol>
+    </svg>
 
-      <div class="side">
-        <div class="card">
-          <div class="row">
-            <button id="connect" data-t="connect">تشغيل</button>
-            <button id="interrupt" class="secondary" data-t="stopSpeaking" disabled>إيقاف الكلام</button>
-            <button id="reset" class="secondary" data-t="newVisitor" disabled>زائر جديد</button>
+    <div class="shell">
+      <header class="masthead">
+        <img class="logo" data-logo src="/brand/devoteam-color-on-dark.svg" alt="Devoteam" />
+        <p class="tagline">AI-driven tech consulting</p>
+        <div class="spacer"></div>
+
+        <!-- Required to be visible, so it is not tied to a phase and cannot be
+             dismissed: EU AI Act Art. 50, and SDAIA's Generative AI Guidelines. The AI
+             line is bilingual in every language setting — a visitor must be able to
+             read it whichever one the page happens to be in. -->
+        <p class="disclosure">
+          <b>محتوى منشأ بالذكاء الاصطناعي · AI-generated</b>
+          <span data-t="privacy">لا يتم تسجيل صوتك أو حفظه.</span>
+        </p>
+
+        <button class="chip" id="langBtn" data-t="switchLang">English</button>
+        <!-- Staff reach the settings from here. The log and the timings stay in the
+             operator panel: a link out is not the same as putting telemetry on the
+             screen a visitor is reading. -->
+        <a class="chip icon-only" id="adminLink" href="/admin.html" data-t-label="admin">
+          <svg class="icon" width="19" height="19" aria-hidden="true"><use href="#i-settings" /></svg>
+        </a>
+      </header>
+
+      <!-- Two panes: the face, and the answer as text. The rail is first in the DOM so
+           it sits on the reading-start side — the right in Arabic, mirroring to the left
+           in English. -->
+      <div class="viewport">
+        <!-- Named by the heading a sighted visitor is already reading, rather than by
+             an aria-label — one label, translated once, that cannot drift from it. -->
+        <aside class="rail" aria-labelledby="railLabel">
+          <p class="rail-label" id="railLabel" data-t="transcript">النص</p>
+
+          <!-- The answer, as text. aria-live so it reaches a screen reader too: a hall
+               is loud, which is the same reason the transcript exists at all. -->
+          <p class="subtitle" id="subtitle" aria-live="polite" aria-atomic="true"></p>
+          <p class="rail-empty" data-t="transcriptEmpty"></p>
+
+          <aside class="sources" id="sources" hidden>
+            <p class="label" data-t="sources">المصادر</p>
+            <div id="citations"></div>
+          </aside>
+        </aside>
+
+        <main class="stage">
+          <!-- Not `muted`. Anam's streamToVideoElement puts audio *and* video on this
+               element, so muting it to satisfy autoplay policy would silence the avatar
+               outright. Simli and Akool route their audio to <audio> below instead. -->
+          <video id="avatar" autoplay playsinline></video>
+          <!-- Simli and Akool send audio back over WebRTC and need a real element to
+               play it through; Anam handles its own. Harmless when unused. -->
+          <audio id="avatar-audio" autoplay></audio>
+          <div class="scrim"></div>
+
+          <!-- Shown whenever there is no picture, in every phase. role="status" so it is
+               announced once rather than silently appearing. Never an empty black box. -->
+          <div class="noface" role="status">
+            <img class="mark" src="/brand/devoteam-mark.svg" alt="" />
+            <p data-t="textOnly"></p>
           </div>
 
-          <button id="talk" class="talk" disabled>
-            <span id="talkLabel" data-t="talk">🎤 اضغط وتحدّث</span>
-            <span class="meter"><i id="meterFill"></i></span>
+          <!-- Shown until a visitor speaks. There is no Start button: the session opens
+               on load, and this is what fills the wait while it negotiates. -->
+          <div class="attract">
+            <h1 data-t-html="attractTitle"></h1>
+            <p class="lead" data-t="attractLead"></p>
+          </div>
+
+          <p class="badge" id="badge" role="status">
+            <span class="dot" id="dot"></span><span id="state" data-t="notConnected">غير متصل</span>
+          </p>
+
+          <!-- No aria-label: the visible span is the accessible name, and adding one
+               would override the text a sighted user is reading. -->
+          <button class="chip stop" id="interrupt">
+            <svg class="icon" width="16" height="16" aria-hidden="true"><use href="#i-stop" /></svg>
+            <span data-t="stopSpeaking">إيقاف الكلام</span>
           </button>
 
-          <label for="q" style="margin-top: 18px" data-t="orType">أو اكتب سؤالك</label>
-          <input id="q" type="text" data-t-placeholder="placeholder" autocomplete="off" disabled />
+          <!-- The single glass layer. §5: never stacked, and it needs the rich background
+               underneath — which is the video. -->
+          <div class="sheet dv-glass" id="sheet">
+            <div class="sheet-main">
+              <button id="talk" class="talk" disabled>
+                <svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg>
+                <span id="talkLabel" data-t="talk">اضغط وتحدّث</span>
+              </button>
+              <input
+                id="q"
+                class="ask"
+                type="text"
+                data-t-placeholder="placeholder"
+                data-t-label="orType"
+                autocomplete="off"
+                disabled
+              />
+            </div>
 
-          <div class="suggest" id="suggest"></div>
-        </div>
+            <div class="sheet-aside">
+              <div class="suggest" id="suggest"></div>
+              <button class="chip sources-toggle" id="sourcesBtn" aria-expanded="false"
+                      aria-controls="sources" hidden>
+                <span id="sourcesCount"></span>
+                <svg class="icon" width="15" height="15" aria-hidden="true"><use href="#i-chevron" /></svg>
+              </button>
+            </div>
+          </div>
 
-        <div class="card panel">
-          <div class="label" data-t="sources">المصادر</div>
-          <div id="citations"></div>
-        </div>
-
-        <div class="card">
-          <div class="label" data-t="log">سجل</div>
-          <div id="log"></div>
-          <div class="metrics" id="metrics"></div>
-        </div>
+        </main>
       </div>
     </div>
+
+    <!-- Booth staff only. Long-press the logo for 1.5s, or Ctrl+Shift+O. Nothing a
+         visitor does by accident opens it, and nothing in it is on their screen.
+         dir="ltr" because the contents are not translated: provider names, millisecond
+         timings and log lines are all English, and inheriting the page's RTL would
+         reverse the control order around text that reads left to right. -->
+    <aside class="operator" id="operator" hidden dir="ltr" lang="en"
+           aria-label="Booth operator panel">
+      <div class="topbar">
+        <h2>Operator</h2>
+        <div class="spacer"></div>
+        <button class="chip" id="operatorClose" aria-label="Close operator panel">✕</button>
+      </div>
+
+      <div class="row">
+        <button id="connect" class="secondary">Reconnect</button>
+        <button id="reset" class="secondary" disabled>New visitor</button>
+        <a class="chip" href="/admin.html">Settings</a>
+      </div>
+
+      <div>
+        <p class="label">Log</p>
+        <div id="log"></div>
+      </div>
+
+      <p class="metrics" id="metrics"></p>
+    </aside>
 
     <script type="module" src="/src/main.js"></script>
   </body>

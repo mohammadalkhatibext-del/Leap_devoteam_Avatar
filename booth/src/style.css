@@ -1,13 +1,141 @@
-/* Devoteam tokens — DEVOTEAM_BRAND_DESIGN.md §10.1.
-   Both themes define the full palette, so no colour is ever left to inherit. */
+/* Devoteam booth — design system.
+   Values trace to DEVOTEAM_BRAND_DESIGN.md; anything the guidelines do not publish is
+   marked [derived] so a brand reviewer can find it. Shared by index.html and
+   admin.html, so every token name here is load-bearing on both pages. */
 
-:root,
-:root[data-theme="dark"] {
+/* ------------------------------------------------------------------ typefaces */
+
+/* Montserrat carries Latin, Tajawal carries Arabic, and both answer to one family
+   name via unicode-range. That is what lets a single `font-family` set a sentence
+   like "نستخدم Kubernetes على AWS" correctly — the browser picks the face per glyph
+   instead of falling the whole run back to one font that cannot draw half of it.
+   Montserrat has no Arabic coverage at all, so without this the booth's default
+   language renders in a system fallback.
+
+   font-display: optional per §2.1, paired with <link rel="preload"> in the HTML.
+   `optional` alone would risk a cold first paint locking the fallback in for the
+   whole session — on a kiosk that runs all day, that is an expensive miss. The
+   preload puts the file in flight before the CSS is parsed, so the 100ms window
+   is met and the brand face is what the stand actually shows. */
+
+@font-face {
+  font-family: "Devoteam Sans";
+  src: url("/fonts/montserrat-latin.woff2") format("woff2-variations");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: optional;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Devoteam Sans";
+  src: url("/fonts/montserrat-latin-ext.woff2") format("woff2-variations");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: optional;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Tajawal ships static weights rather than a variable axis, so each one is its own
+   file — which means every weight is a separate request, and only the ones actually
+   used are worth shipping. Three cover the whole booth: 400 body, 500 chips and
+   subtitles, 700 emphasis. 300 and 800 were dropped after checking that nothing sets
+   them on Arabic text; a request for either resolves within the family rather than
+   falling out of it. 600 is likewise absent by design — CSS font matching resolves a
+   600 request up to 700, which is the right answer for Arabic headings. */
+@font-face {
+  font-family: "Devoteam Sans";
+  src: url("/fonts/tajawal-arabic-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: optional;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+@font-face {
+  font-family: "Devoteam Sans";
+  src: url("/fonts/tajawal-arabic-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: optional;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+@font-face {
+  font-family: "Devoteam Sans";
+  src: url("/fonts/tajawal-arabic-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: optional;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+
+/* --------------------------------------------------------------------- tokens */
+
+:root {
+  /* Brand palette — canon, §1.1–1.3. Fills, graphics and decoration.
+     These are the identity. The role tokens below decide where each may be used. */
   --dv-poppy: #f8485e;
   --dv-poppy-ink: #d6334a;
+  --dv-poppy-hover: #bd2c41;
+  --dv-grey: #3c3c3a;
+  --dv-grey-light: #efeeee;
   --dv-fresh-mint: #5ab891;
   --dv-intense-fire: #fcc354;
 
+  /* Type scale — §2.2, verbatim. */
+  --text-hero: 4rem;
+  --text-h1: 3rem;
+  --text-h2: 2.25rem;
+  --text-h3: 1.75rem;
+  --text-h4: 1.5rem;
+  --text-h5: 1.25rem;
+  --text-h6: 1rem;
+  --text-lg: 1.125rem;
+  --text-base: 1rem;
+  --text-sm: 0.875rem;
+  --text-micro: 0.75rem; /* floor — §2.3, nothing may be smaller */
+
+  /* Radius — §4.1. One system, no stray values. */
+  --radius-label: 12px;
+  --radius-button: 12px;
+  --radius-card: 15px;
+  --radius-modal: 24px;
+  --radius-hero: 25px;
+
+  /* Motion — §9. */
+  --dur-fast: 160ms;
+  --dur-base: 300ms;
+  --dur-slow: 520ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Controls. A booth is operated standing up, by people who are not looking
+     carefully — HIG asks 44px minimum, and the primary control gets more. */
+  --tap-min: 44px;
+  --tap-primary: 46px;
+
+  /* How far the glass sheet floats off the bottom edge. Everything that stacks
+     above the sheet is positioned from this plus the measured sheet height, so the
+     two can never be out of step. */
+  --sheet-bottom: clamp(10px, 1.4vh, 18px);
+  /* Replaced at runtime by a ResizeObserver measuring the sheet's *border* box — the
+     height changes with language and with how the suggestion chips wrap. */
+  --sheet-h: 150px;
+  --above-sheet: calc(var(--sheet-bottom) + var(--sheet-h) + 14px);
+}
+
+/* Dark is the booth default: an exhibition hall is bright overhead, and a dark
+   surface makes the avatar's face the brightest thing on the panel. §1.6 surfaces. */
+:root,
+:root[data-theme="dark"] {
   --surface-base: #141413;
   --surface-1: #1e1e1d;
   --surface-2: #2a2a28;
@@ -16,31 +144,86 @@
   --text-muted: rgba(255, 255, 255, 0.72);
   --border: rgba(255, 255, 255, 0.14);
   --border-soft: rgba(255, 255, 255, 0.07);
-  --shadow: none;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+
+  /* The masthead band fades from the page ground to transparent, so it needs the base
+     surface as raw channels rather than a hex — it is used at four different alphas. */
+  --band-rgb: 20, 20, 19;
+
+  /* Role tokens. Named for the job, not the hue — this is what stops one red from
+     meaning "press me", "something failed" and "here is a citation" at once. */
+  --accent: var(--dv-poppy); /* 4.8:1 on --surface-1 — canon poppy is text-safe here */
+  --accent-fill: var(--dv-poppy-ink); /* 4.74:1 under a white label */
+  --accent-fill-hero: var(--dv-poppy); /* 3.45:1 — only under a label ≥24px */
+  --accent-fill-hover: var(--dv-poppy-hover);
+  --on-accent: #ffffff;
+
+  /* §1.5 sets error to #c02638 so danger does not read as brand. On this surface
+     that measures 2.85:1 and fails, and any red lifted far enough to pass drifts
+     back into the poppy it exists to differ from. So on dark the distinction is not
+     carried in hue at all: body-white text, red icon, explicit verb. §1.5 mandates
+     the icon and the verb regardless, for exactly this reason. [derived] */
+  --critical-text: #ffffff;
+  --critical-icon: #ff6b78; /* 6.2:1 — comfortably past the 3:1 UI-component bar */
+  --success: var(--dv-fresh-mint); /* 6.9:1 */
+  --warning: var(--dv-intense-fire); /* 10.4:1 */
 }
 
 :root[data-theme="light"] {
-  --dv-poppy: #f8485e;
-  --dv-poppy-ink: #d6334a;
-  --dv-fresh-mint: #2f8f68;
-  --dv-intense-fire: #b8860b;
-
-  --surface-base: #f4f2ef;
+  --surface-base: #f7f6f5;
   --surface-1: #ffffff;
-  --surface-2: #eceae6;
-  --surface-sunken: #e6e3de;
-  --text: #141413;
-  --text-muted: rgba(20, 20, 19, 0.66);
-  --border: rgba(20, 20, 19, 0.16);
-  --border-soft: rgba(20, 20, 19, 0.08);
-  --shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --surface-2: var(--dv-grey-light);
+  --surface-sunken: #e8e6e5;
+  --text: var(--dv-grey);
+  --text-muted: #6e6e68;
+  --border: rgba(60, 60, 58, 0.18);
+  --border-soft: rgba(60, 60, 58, 0.09);
+  --shadow: 0 1px 2px rgba(60, 60, 58, 0.05), 0 8px 28px rgba(60, 60, 58, 0.06);
+  --band-rgb: 247, 246, 245;
+
+  /* Canon poppy is 3.45:1 on white and fails as text — §1.4's deepened variant is
+     the one that may carry small type here. */
+  --accent: var(--dv-poppy-ink); /* 4.74:1 */
+  --accent-fill: var(--dv-poppy-ink);
+  --accent-fill-hero: var(--dv-poppy);
+  --accent-fill-hover: var(--dv-poppy-hover);
+  --on-accent: #ffffff;
+
+  --critical-text: #c02638; /* 6.3:1 */
+  --critical-icon: #c02638;
+  --success: #2f7d5c; /* 5.0:1 — §1.5's text-safe mint, not the canon fill */
+  --warning: #8a5a00; /* 5.9:1 */
 }
 
+/* Glass — §5. One layer, never stacked, 12–16px blur, 70–85% opacity.
+   Dark-theme values, unconditionally: the only glass in the booth sits on the stage,
+   and the stage is always dark (see .stage below). §5's light-theme spec is written
+   for glass over a light ground — used here it composites 75% white over black and
+   turns grey, which is both off-brand and worse to read. */
 :root {
-  --radius-card: 15px;
-  --radius-button: 12px;
-  --radius-hero: 25px;
+  /* §5's dark-theme table says black @70%. That is written for glass over photography;
+     over a mostly dark stage it composites to solid black. 55% with the sheen in
+     `.dv-glass` lands in the same place perceptually and actually looks like glass. */
+  --glass-fill: rgba(0, 0, 0, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --glass-blur: 16px;
 }
+
+/* Neon — §6. Soft and diffused, never a hard outer glow. Budget is two focal
+   points per screen: the push-to-talk button, and the speaking underline. */
+:root {
+  --neon-glow: 0 0 24px rgba(248, 72, 94, 0.35), 0 0 48px rgba(248, 72, 94, 0.18);
+  --neon-glow-strong: 0 0 28px rgba(248, 72, 94, 0.5), 0 0 64px rgba(248, 72, 94, 0.28);
+  --neon-underline: linear-gradient(
+    90deg,
+    rgba(248, 72, 94, 0) 0%,
+    rgba(248, 72, 94, 1) 20%,
+    rgba(248, 72, 94, 1) 80%,
+    rgba(248, 72, 94, 0) 100%
+  );
+}
+
+/* ----------------------------------------------------------------------- base */
 
 * {
   box-sizing: border-box;
@@ -53,20 +236,107 @@
 [hidden] {
   display: none !important;
 }
+
+html {
+  font-size: 16px;
+}
+
+/* Arabic has no capitals, so it reads smaller than Latin at a matched nominal size —
+   HIG Right to Left suggests about two points, which is ~6% here.
+
+   Applied once, on the root, rather than per element. The previous version used
+   `:lang(ar) { font-size: 1.06em }`, which matches *every* element in an Arabic
+   document and therefore multiplied at every nesting level: shell × stage × sheet ×
+   row × label. Anything with an explicit rem size masked it, which is why it went
+   unnoticed — it only inflated the elements that inherited. Scaling the root scales
+   every rem in the system exactly once. */
+html[lang="ar"] {
+  font-size: 17px;
+}
+
+/* The booth screen is read standing up, at roughly an arm and a half's distance,
+   by someone who is not going to lean in. One lever moves the whole scale rather
+   than overriding sizes case by case, and it keeps the 12px floor at 15px on the
+   real hardware. The admin page is a laptop tool and stays at 16px. */
+html[data-surface="booth"] {
+  font-size: clamp(16px, 0.45vw + 11.4px, 20px);
+}
+html[data-surface="booth"][lang="ar"] {
+  font-size: clamp(17px, 0.48vw + 12.1px, 21.2px);
+}
+
 html,
 body {
   height: 100%;
 }
+
 body {
   margin: 0;
-  padding: 20px;
   background: var(--surface-base);
   color: var(--text);
-  font: 400 17px/1.6 "Montserrat", "Segoe UI", Tahoma, Arial, sans-serif;
-  transition: background 0.18s ease, color 0.18s ease;
+  font-family: "Devoteam Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: 1.6;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
-/* ---------------------------------------------------------------- topbar */
+body:not(.booth) {
+  padding: 20px;
+}
+
+/* Every interactive thing must show focus. The booth is touch-first, but the admin
+   page is driven by keyboard and the kiosk must stay usable with switch control.
+
+   The ring is a neutral that contrasts with the surface, not the brand red: poppy on
+   poppy is exactly the case that matters, because the push-to-talk button is both the
+   most important control and the one wearing the brand fill. It is `outline` only —
+   the earlier version paired it with a box-shadow halo, which `.talk` silently
+   overwrote with its neon glow, taking the ring with it. Outline cannot be clobbered
+   that way and follows the element's own border-radius. */
+:root,
+:root[data-theme="dark"] {
+  --focus-ring: #ffffff;
+}
+:root[data-theme="light"] {
+  --focus-ring: #141413;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  /* Offset so the ring sits on the surface behind the control rather than on the
+     control's own fill, which is what keeps it readable on the poppy button. */
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  /* §2.3 — Montserrat is wide, so headings take tight leading and negative tracking. */
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  /* 400, not 300. §2.3 pairs a light weight with a heavy one, but this heading is read
+     across a hall, and HIG Typography is explicit that light weights get hard to see —
+     400 against 700 is a wider contrast than 300 against 700 anyway, and both weights
+     are ones the Arabic face actually ships. Light is kept for the tagline, which is
+     Latin and therefore drawn by variable Montserrat. */
+  font-weight: 400;
+}
+/* Two weights per heading, emphasis on the word that carries the meaning. Never a
+   whole heading in bold — §2.3. */
+h1 b,
+h2 b,
+h3 b,
+.em {
+  font-weight: 700;
+}
+
+p {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------- topbar */
 
 .topbar {
   display: flex;
@@ -74,61 +344,98 @@ body {
   gap: 16px;
   margin-bottom: 18px;
 }
+/* Sized by width, not height: §3 sets a 68px minimum *width*, and the viewBox is
+   now cropped to the artwork so that measurement lands on the logo rather than on
+   the export canvas's padding. */
 .topbar .logo {
-  height: 100px;
-  width: auto;
+  width: 132px;
+  height: auto;
   flex: none;
 }
 .topbar .spacer {
   flex: 1;
 }
 .topbar h1 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: var(--text-h5);
   margin: 0;
 }
 .topbar .where {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .chip {
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
   font-weight: 500;
-  padding: 8px 14px;
-  border-radius: 999px;
+  min-height: var(--tap-min);
+  padding: 10px 18px;
+  border-radius: var(--radius-label);
   border: 1px solid var(--border);
   background: var(--surface-1);
   color: var(--text);
   cursor: pointer;
   box-shadow: var(--shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 .chip:hover {
-  border-color: var(--dv-poppy);
+  border-color: var(--accent);
 }
 a.chip {
   text-decoration: none;
 }
+/* Square, so an icon sits centred rather than floating in a pill sized for words.
+   Still 44px, because it is a real control on a touchscreen. */
+.chip.icon-only {
+  width: var(--tap-min);
+  padding: 0;
+  flex: none;
+}
+.chip .icon {
+  flex: none;
+}
 
-/* ----------------------------------------------------------------- cards */
+/* Header chips are secondary to everything on the stage, so they are quieter than the
+   default: no shadow, a hairline border, and the surface only appearing on hover.
+   Token-driven rather than hardcoded white, because the masthead is the one part of
+   the booth that genuinely does change with the theme — it sits on the page ground,
+   not on the stage. */
+.masthead .chip {
+  min-height: var(--tap-min);
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+.masthead .chip:hover {
+  background: var(--surface-2);
+  border-color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------- cards */
 
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-card);
-  padding: 20px;
+  padding: 24px;
   box-shadow: var(--shadow);
 }
 
 label,
 .label {
   display: block;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: var(--text-micro);
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
   margin: 0 0 8px;
 }
@@ -139,7 +446,7 @@ select,
 textarea,
 button {
   font-family: inherit;
-  font-size: 1rem;
+  font-size: var(--text-base);
   border-radius: var(--radius-button);
 }
 input[type="text"],
@@ -147,6 +454,7 @@ input[type="number"],
 select,
 textarea {
   width: 100%;
+  min-height: var(--tap-min);
   padding: 12px 14px;
   background: var(--surface-2);
   color: var(--text);
@@ -157,28 +465,30 @@ textarea {
   min-height: 96px;
   line-height: 1.55;
 }
-input:focus,
-select:focus,
-textarea:focus {
-  outline: 2px solid var(--dv-poppy);
-  outline-offset: 1px;
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 button {
-  padding: 11px 20px;
-  font-weight: 600;
+  min-height: var(--tap-min);
+  padding: 12px 24px;
+  /* §7.1 — primary buttons are Medium, not Bold. */
+  font-weight: 500;
   border: none;
   cursor: pointer;
-  background: var(--dv-poppy-ink);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 button:hover:not(:disabled) {
-  background: #bd2c41;
+  background: var(--accent-fill-hover);
 }
 button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* §7.1 — secondary is a 1px outline with no glow. */
 button.secondary {
   background: transparent;
   color: var(--text);
@@ -190,44 +500,859 @@ button.secondary:hover:not(:disabled) {
 
 .row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .empty {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 .hint {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   margin: 6px 0 0;
   line-height: 1.5;
 }
+/* ====================================================================== booth */
 
-/* ------------------------------------------------------------------- log */
+/* The booth is one centred column: a header band, then the stage, and the controls
+   floating on the stage's lower edge. The stage is still where everything happens —
+   which is what keeps glass working, since §5 needs a visually rich background and a
+   live face is exactly that. It is just no longer edge to edge. */
+
+body.booth {
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--surface-base);
+}
+
+.shell {
+  height: 100dvh;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 2.2vw, 32px) clamp(14px, 2vh, 26px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.4vh, 18px);
+}
+
+/* ------------------------------------------------------------------ masthead */
+
+.masthead {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.4vw, 20px);
+  padding: clamp(10px, 1.6vh, 18px) 0;
+}
+
+/* The band runs the full width of the screen rather than the column, and fades out
+   at both ends so it reads as part of the background instead of a bar sitting on
+   top of it. Breaking out of the centred column is what `left: 50% / 100vw` is for;
+   the mask is what stops it terminating in a hard edge. */
+.masthead::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--band-rgb), 0.97) 0%,
+    rgba(var(--band-rgb), 0.82) 60%,
+    rgba(var(--band-rgb), 0) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 12%,
+    #000 88%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 12%,
+    #000 88%,
+    transparent 100%
+  );
+}
+
+.masthead .spacer {
+  flex: 1;
+}
+
+/* §3 minimum is 68px wide; this sits above it. The viewBox is cropped to the artwork,
+   so this measures the logo rather than the export canvas's padding. */
+.masthead .logo {
+  width: clamp(104px, 8vw, 132px);
+  height: auto;
+  flex: none;
+  display: block;
+}
+
+/* §2.5 — the tagline is Light, and sits at the end of the block. */
+.tagline {
+  font-size: var(--text-sm);
+  font-weight: 300;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .tagline {
+    display: none;
+  }
+}
+
+/* EU AI Act Art. 50 and SDAIA both require this to be visible, so it is not tied to a
+   phase and cannot be dismissed — it renders in every state, including attract and
+   offline. The privacy line rides with it because PDPL wants the same permanence. */
+.disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: end;
+  font-size: var(--text-micro);
+  line-height: 1.35;
+  color: var(--text);
+}
+.disclosure b {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.disclosure span {
+  color: var(--text-muted);
+}
+@media (max-width: 720px) {
+  .disclosure span {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ viewport */
+
+/* Two panes: the face, and the answer in text. They are siblings rather than the text
+   floating on the face — a subtitle centred over the avatar covered the thing the
+   visitor came to look at, and grew downward into the controls as the answer got
+   longer. The rail comes first in the DOM, so it lands on the reading-start side:
+   the right in Arabic, and it mirrors to the left in English, which is what HIG
+   Right to Left asks for. */
+.viewport {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: clamp(10px, 1.2vw, 18px);
+}
+
+/* Not glass. §5 is explicit that glass needs a visually rich background — this panel
+   sits on the flat page ground, where the effect does nothing but cost a blur, and
+   putting it here would also mean two glass layers on one screen. So it is an honest
+   opaque surface, and the one glass layer stays where it earns its keep: on the video. */
+.rail {
+  flex: 0 0 clamp(250px, 25%, 380px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(14px, 1.8vh, 20px) clamp(14px, 1.2vw, 20px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius-hero);
+  background: var(--surface-1);
+  /* Full-weight border, not the soft one: --surface-1 sits only one step off the page
+     ground, so on dark the panel's edge is the only thing separating the two. */
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+/* Below this the two panes stop being two panes — the rail would be narrower than the
+   longest Arabic word. It stacks under the stage instead, which is the same content in
+   the same order. */
+@media (max-width: 900px) {
+  .viewport {
+    flex-direction: column;
+  }
+  .rail {
+    flex: 0 0 auto;
+    max-height: 32vh;
+  }
+}
+
+.rail-label {
+  flex: none;
+  margin: 0;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The rail is never empty and never a bare box: before the first answer it says what
+   will appear there. That doubles as the text-only promise the no-picture pill makes. */
+.rail-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.subtitle:not(:empty) ~ .rail-empty {
+  display: none;
+}
+
+/* --------------------------------------------------------------------- stage */
+
+/* The stage is a dark context by definition — it is either live video or the dark
+   stand-in for it, never a light surface. Re-declaring the dark token set here means
+   everything layered on it (subtitle, badge, glass sheet, sources) stays legible
+   without a single hardcoded colour, and the theme is left to govern the chrome that
+   genuinely can be light: the operator panel and the admin page. */
+.stage {
+  --surface-1: #1e1e1d;
+  --surface-2: #2a2a28;
+  --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.72);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-soft: rgba(255, 255, 255, 0.07);
+  --accent: var(--dv-poppy);
+  --focus-ring: #ffffff;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+
+  /* The critical roles have to come along too. Left to the light theme, the offline
+     heading would be #c02638 on this dark ground — 2.85:1, the exact failure §1.5's
+     error colour runs into on dark. Here it is white text with a red icon, which is
+     the resolution §1.5 itself points to. */
+  --critical-text: #ffffff;
+  --critical-icon: #ff6b78;
+  --success: var(--dv-fresh-mint);
+  --warning: var(--dv-intense-fire);
+}
+
+.stage {
+  /* Not decoration: `color` is computed on <body> from whatever --text was there, and
+     descendants inherit that computed value rather than re-reading the variable. Without
+     restating it here, every element in the stage that simply inherits its colour keeps
+     the outer theme's ink no matter what the token block above says. */
+  color: var(--text);
+
+  position: relative;
+  /* Takes the width the rail leaves and the full height of the row. The aspect ratio
+     is a preference, not a constraint — `object-fit: cover` on the video means the
+     stage can be any rectangle without the face distorting, and letting it fill the
+     row keeps the avatar as large as the screen allows. */
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--radius-hero);
+  overflow: hidden;
+  background: #0b0b0a;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.stage video {
+  width: 100%;
+  height: 100%;
+  /* Anchored high: a portrait-framed avatar cropped from the centre loses forehead
+     before it loses floor, and the face is the entire product. */
+  object-fit: cover;
+  object-position: 50% 22%;
+  display: block;
+}
+
+/* Dimming layers. Glass over live video cannot be contrast-checked against the video,
+   so §5's "verify against the combined colour" is met by guaranteeing the floor:
+   these scrims sit under the controls, so the darkest composite is what the text is
+   measured on and the video can be anything. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.62) 0%,
+    rgba(0, 0, 0, 0.3) 26%,
+    rgba(0, 0, 0, 0) 52%
+  );
+}
+
+/* The ground behind the video: a deep neutral with a soft poppy bloom. §8.1 — with no
+   brand photography in the repo, build heroes on the dark surfaces and let neon supply
+   the richness. A loop video drops in behind this without touching anything else. */
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* A second bloom low on the stage, under where the glass sheet sits. Without it
+       the sheet blurs a flat black rectangle, which is the same as blurring nothing —
+       §5's "glass needs a visually rich background", supplied by neon per §8.1 since
+       there is no brand photography in the repo. */
+    radial-gradient(
+      120% 62% at 50% 104%,
+      rgba(248, 72, 94, 0.2) 0%,
+      rgba(248, 72, 94, 0.05) 46%,
+      rgba(248, 72, 94, 0) 72%
+    ),
+    radial-gradient(
+      68% 54% at 50% 38%,
+      rgba(248, 72, 94, 0.16) 0%,
+      rgba(248, 72, 94, 0) 70%
+    ),
+    radial-gradient(90% 70% at 18% 8%, rgba(120, 130, 160, 0.09) 0%, rgba(120, 130, 160, 0) 60%),
+    #161615;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-soft);
+}
+/* Shown whenever there is no live picture — which is any phase before the stream is
+   up, and every phase at all if the renderer never arrives. */
+body[data-face="none"] .stage::before,
+body[data-phase="boot"] .stage::before,
+body[data-phase="connecting"] .stage::before {
+  opacity: 1;
+}
+
+/* --------------------------------------------------- no picture, never black */
+
+/* A black rectangle is not a state. When the renderer is missing this says so, and
+   says what still works — the answer engine is a separate service, so the typed path
+   keeps running without it. Deliberately a small pill at the top rather than a
+   full-screen alert: it must never cover the answer the visitor actually asked for,
+   and it has to survive every phase, including while the avatar is "speaking". */
+.noface {
+  position: absolute;
+  z-index: 3;
+  top: clamp(12px, 1.8vh, 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 8px 16px 8px 10px;
+  border-radius: var(--radius-label);
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid var(--border);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-base) var(--ease-out), visibility var(--dur-base);
+}
+body[data-face="none"] .noface {
+  opacity: 1;
+  visibility: visible;
+}
+.noface .mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.noface p {
+  font-size: var(--text-micro);
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------------- attract */
+
+.attract {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  transform: translateY(-56%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0 6vw;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-slow) var(--ease-soft), visibility var(--dur-slow);
+}
+body[data-phase="boot"] .attract,
+body[data-phase="attract"] .attract,
+body[data-phase="connecting"] .attract {
+  opacity: 1;
+  visibility: visible;
+}
+.attract h1 {
+  font-size: clamp(var(--text-h2), 4.4vw, var(--text-h1));
+  line-height: 1.1;
+  max-width: 18ch;
+}
+.attract .lead {
+  font-size: var(--text-lg);
+  font-weight: 400;
+  color: var(--text-muted);
+  max-width: 34ch;
+}
+
+/* --------------------------------------------------------------------- badge */
+
+.badge {
+  position: absolute;
+  inset-inline-start: clamp(14px, 1.8vw, 24px);
+  bottom: var(--above-sheet);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: var(--radius-label);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+body[data-phase="listening"] .badge,
+body[data-phase="thinking"] .badge,
+body[data-phase="speaking"] .badge,
+body[data-phase="connecting"] .badge {
+  opacity: 1;
+}
+/* State is never carried by the dot alone — the word beside it says the same thing,
+   so it survives colour blindness and a glance from three metres. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a8a86;
+  flex: none;
+}
+.dot.live {
+  background: var(--dv-fresh-mint);
+}
+.dot.busy {
+  background: var(--dv-intense-fire);
+}
+
+/* ------------------------------------------------------------------ subtitle */
+
+/* A hall is loud and some visitors will read rather than hear. It lives in the rail
+   now, as ordinary flowing text, so a long answer scrolls in its own column instead of
+   growing across the avatar's face. */
+.subtitle {
+  margin: 0;
+  font-size: clamp(var(--text-base), 1.15vw, var(--text-h5));
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+.subtitle:not(:empty) {
+  opacity: 1;
+}
+
+/* Neon focal point 2 of 2 — present only while speaking, so §6 Rule 2's budget is
+   never exceeded. */
+.subtitle::after {
+  content: "";
+  display: block;
+  height: 2px;
+  width: min(150px, 55%);
+  margin: 14px 0 0;
+  border-radius: 2px;
+  background: var(--neon-underline);
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+body[data-phase="speaking"] .subtitle:not(:empty)::after {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------- stop */
+
+/* Appears only while the avatar is talking. A control that is not applicable is not
+   shown, rather than shown disabled — one less thing on the screen. */
+.stop {
+  position: absolute;
+  inset-inline-end: clamp(14px, 1.8vw, 24px);
+  bottom: var(--above-sheet);
+  z-index: 3;
+  /* Small type, but not a small target: the 44px floor is the floor even for a
+     control that only appears while the avatar is talking. */
+  min-height: var(--tap-min);
+  padding: 7px 13px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: var(--text-micro);
+  box-shadow: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-fast) var(--ease-out), visibility var(--dur-fast);
+}
+body[data-phase="speaking"] .stop {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* --------------------------------------------------------------- glass sheet */
+
+/* The one glass layer on the page. Never nested, never stacked — §5.
+
+   Two things stopped it reading as glass. The scrim above put 84% black under the
+   panel, so 70% black glass composited over near-black and the result was simply an
+   opaque black box — the blur had nothing left to reveal. And a flat dark fill has no
+   edge: real glass catches light along its top face, and without that the pane reads as
+   paint rather than as a sheet of something.
+
+   So: the scrim is softer (it still guarantees the contrast floor — see below), the
+   fill is lighter than §5's 70%, and a white sheen sits over it. The sheen is a
+   [derived] extension; §5 specifies a fill, not a finish, and on a black stage the
+   specified fill alone is indistinguishable from the surface it sits on.
+
+   The contrast floor still holds at the worst case, which is glass over pure white
+   video: 0.62 scrim then 0.55 fill leaves the composite at roughly sRGB 0.24, and
+   white text on that is about 10:1 — well past §5's 4.5:1 requirement against the
+   combined colour. */
+.dv-glass {
+  background: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.035) 44%,
+      rgba(255, 255, 255, 0.07) 100%
+    ),
+    var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  /* Saturation is what separates glass from smoked plastic: the blur alone averages
+     the colour behind it toward grey, and lifting it back keeps the video reading
+     through the pane. */
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+  box-shadow: var(--shadow);
+}
+/* Degrade to an opaque panel where the effect is unsupported — and on a booth machine
+   too slow for it, which is the likelier of the two. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dv-glass {
+    background: rgba(20, 20, 19, 0.94);
+  }
+}
+
+.sheet {
+  position: absolute;
+  inset-inline: clamp(10px, 1.4vw, 18px);
+  bottom: clamp(10px, 1.4vh, 18px);
+  z-index: 4;
+  border-radius: var(--radius-card);
+  padding: clamp(9px, 1vh, 12px) clamp(10px, 1.2vw, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 1;
+  transition: opacity var(--dur-slow) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-soft);
+}
+body[data-phase="boot"] .sheet {
+  opacity: 0;
+  transform: translateY(20px);
+  visibility: hidden;
+}
+
+.sheet-main {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+/* Push-to-talk is the whole interface. Everything else on this sheet is a fallback
+   for a hall too loud to speak into — so it is the only filled control here, and
+   everything around it is transparent. */
+.talk {
+  /* Sized to its label rather than stretched: it used to take the larger half of the
+     row, which made the one red thing on the screen also the biggest thing on it. It
+     stays obviously primary — the only fill and the only glow on the sheet — without
+     being the panel. Content-sized rather than a fixed track, because the label is
+     translated: a track wide enough for the Arabic wrapped "Press and speak" onto two
+     lines, and one wide enough for both wasted space in Arabic. `nowrap` keeps the
+     button one line tall in any language; `max-width` stops a longer future label
+     from taking the row back. */
+  flex: 0 0 auto;
+  max-width: 34%;
+  white-space: nowrap;
+  min-height: var(--tap-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  /* 19px is not a design preference, it is the WCAG boundary. White on canon poppy is
+     3.45:1, which is allowed only for large text — ≥24px, or ≥18.66px bold. The label
+     is bold, so 19px keeps it on the right side of that line at every root size the
+     kiosk lever produces, and the button can shrink without the fill having to change
+     to the deeper --accent-fill. */
+  font-size: max(19px, var(--text-base));
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 8px 18px;
+  background: var(--accent-fill-hero);
+  color: var(--on-accent);
+  border-radius: var(--radius-button);
+  /* Neon focal point 1 of 2. Soft and diffused — §6 Rule 2 forbids a hard glow. */
+  box-shadow: var(--neon-glow);
+  transition: background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.talk:hover:not(:disabled) {
+  background: var(--dv-poppy-hover);
+}
+.talk:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.talk .icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex: none;
+}
+/* Listening is announced three ways at once — fill, glow and the label text — so it
+   never depends on colour alone. */
+.talk.listening {
+  background: var(--dv-fresh-mint);
+  color: #06281c; /* 6.5:1 on mint */
+  --level: 0;
+  /* The level meter is ambient feedback, not a measurement: the glow breathes with the
+     visitor's voice instead of a bar racing across the button. */
+  box-shadow: 0 0 calc(14px + var(--level) * 28px) rgba(90, 184, 145, 0.5),
+    0 0 calc(30px + var(--level) * 50px) rgba(90, 184, 145, 0.26);
+}
+
+/* Transparent, with only a hairline to say where it is. It is the fallback for a hall
+   too loud to speak into, and it should not compete with the button beside it.
+
+   `input.ask`, not `.ask`: the generic field rule above is `input[type="text"]`, and an
+   attribute selector weighs the same as a class — (0,1,1) beats a bare class, so every
+   declaration here that collided with it (fill, padding, font size, height) was being
+   thrown away and the field kept rendering as a filled --surface-2 slab. Qualifying the
+   class with the element ties the specificity, and this block wins on order. */
+input.ask {
+  flex: 1;
+  min-height: var(--tap-primary);
+  font-size: var(--text-sm);
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+input.ask:hover:not(:disabled),
+input.ask:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.sheet-aside {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* One row that scrolls, rather than a wrapping grid. The English suggestions are long
+   enough to wrap onto a second line where the Arabic ones do not, which made the panel
+   a different height in each language and moved everything stacked above it. A single
+   track keeps the sheet a predictable size and still reaches every chip — swiping a row
+   of chips is a normal thing to do on a touchscreen. */
+.suggest {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  /* Fade the trailing edge so a partly-visible chip reads as "there is more" rather
+     than as a clipping bug. The gradient's 0 position is the side it starts from, so
+     `to right` fades the left edge — which is the overflowing side in RTL, and the
+     opposite one in LTR. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px);
+  mask-image: linear-gradient(to right, transparent 0, #000 24px);
+}
+[dir="ltr"] .suggest {
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 24px);
+  mask-image: linear-gradient(to left, transparent 0, #000 24px);
+}
+.suggest::-webkit-scrollbar {
+  display: none;
+}
+.suggest button {
+  flex: none;
+  white-space: nowrap;
+}
+/* Transparent rather than filled. They cannot be real glass — they sit *on* the glass
+   sheet, and §5 forbids stacking glass on glass — so the honest version is no fill at
+   all and a hairline border, with the surface appearing only on hover. That also stops
+   four suggestions reading as four more calls to action beside the one red button. */
+.suggest button,
+.sources-toggle {
+  min-height: var(--tap-min);
+  font-size: var(--text-micro);
+  font-weight: 500;
+  padding: 7px 13px;
+  border-radius: var(--radius-label);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.suggest button:hover:not(:disabled),
+.sources-toggle:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------- sources */
+
+/* Progressive disclosure: the count is always visible, the quotes are one tap away.
+   Booth staff need to check what an answer was built on; a visitor mostly does not,
+   and paying for it with permanent screen space was the wrong trade. */
+.sources-toggle {
+  flex: none;
+}
+.sources-toggle[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fff;
+}
+
+/* In the rail, under the answer it belongs to — sources and the text they support are
+   the same subject, and splitting them across two panes was the reason the old sources
+   sheet had to cover the stage to be seen. */
+.sources {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.sources .label {
+  margin-bottom: 12px;
+}
+.cite {
+  border-inline-start: 3px solid var(--accent);
+  padding: 2px 12px;
+  margin-bottom: 14px;
+}
+.cite:last-child {
+  margin-bottom: 0;
+}
+.cite b {
+  display: block;
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.cite span {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ operator */
+
+/* Everything booth staff need and no visitor should see. Telemetry on the visitor
+   surface was the problem; deleting it would have been the wrong fix, because the
+   log is the only way to tell a mic failure from a network one at the stand. */
+.operator {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 10;
+  width: min(420px, 92vw);
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface-1);
+  border-inline-start: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  transform: translateX(0);
+  transition: transform var(--dur-base) var(--ease-out), visibility 0s;
+}
+/* Off-screen on the trailing edge, which flips with direction — so it slides in
+   from the right in English and from the left in Arabic, matching the reading
+   order rather than fighting it.
+
+   `display: flex !important` outranks the global `[hidden] { display: none }` on
+   specificity, so the panel keeps a box to animate. Visibility is what actually
+   takes it out of the tab order, held back until the slide has finished. */
+.operator[hidden] {
+  display: flex !important;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform var(--dur-base) var(--ease-out),
+    visibility 0s linear var(--dur-base);
+}
+[dir="rtl"] .operator[hidden] {
+  transform: translateX(-100%);
+}
+.operator h2 {
+  font-size: var(--text-h4);
+  font-weight: 600;
+}
 
 #log {
   font-family: ui-monospace, Consolas, monospace;
-  font-size: 0.72rem;
+  font-size: var(--text-micro);
+  /* Log lines are machine output and stay LTR in both languages — but they now sit
+     on an LTR panel rather than under an RTL card heading, so the direction no
+     longer changes mid-block. */
   direction: ltr;
   text-align: left;
   color: var(--text-muted);
   background: var(--surface-sunken);
   border-radius: var(--radius-card);
-  padding: 10px 12px;
-  height: 104px;
+  padding: 12px 14px;
+  height: 220px;
   overflow-y: auto;
   white-space: pre-wrap;
 }
 #log .err {
-  color: var(--dv-poppy);
+  color: var(--critical-text);
+  font-weight: 700;
 }
 .metrics {
   font-variant-numeric: tabular-nums;
-  color: var(--dv-fresh-mint);
-  font-size: 0.78rem;
+  color: var(--success);
+  font-size: var(--text-sm);
   direction: ltr;
   text-align: left;
-  margin-top: 8px;
+}
+
+/* ------------------------------------------------------------------- motion */
+
+/* Required by §9, and written before any of the motion above it so nothing ships
+   unguarded. The level glow keeps a static step rather than vanishing — it is
+   functional feedback about whether the mic is hearing anything, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .talk.listening {
+    box-shadow: var(--neon-glow-strong);
+  }
 }
