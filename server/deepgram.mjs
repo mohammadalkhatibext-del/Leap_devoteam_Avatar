@@ -12,6 +12,8 @@
  * The key stays here. It is never sent to the browser — same rule as the Anam token.
  */
 
+import { VOCABULARY } from "./vocabulary.mjs";
+
 const ENDPOINT = "https://api.deepgram.com/v1/listen";
 
 /**
@@ -43,6 +45,16 @@ async function once(audio, contentType, { model, language }, key) {
     smart_format: "true", // punctuation — Claude reads a punctuated question better
     punctuate: "true",
   });
+
+  // Keyterm prompting is nova-3 only; nova-2 rejects the parameter rather than
+  // ignoring it, which would fail the English half of every question.
+  //
+  // Measured weaker here than the same list is on the OpenAI path: it left
+  // "ديفوتين" uncorrected on the fixture that fails. Kept because it is the
+  // documented mechanism, it costs nothing on a request already being made, and it
+  // did no harm — but if a booth is being tuned for hearing, OpenAI is the engine
+  // carrying the win. See server/vocabulary.mjs.
+  if (model.startsWith("nova-3")) for (const term of VOCABULARY) params.append("keyterm", term);
 
   const res = await fetch(`${ENDPOINT}?${params}`, {
     method: "POST",
