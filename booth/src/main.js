@@ -2,12 +2,11 @@ import { avatar } from "./avatar.js";
 import { Mic } from "./mic.js";
 import { fromBase64, durationMs } from "./audio.js";
 import { currentLang, setLang, applyLang, t } from "./i18n.js";
-import { initTheme } from "./theme.js";
+import { initTheme, toggleTheme, currentTheme } from "./theme.js";
 
 // The pre-paint script in index.html already stamped data-theme, so this is not what
 // avoids a flash — it is what swaps the wordmark to the variant that survives on the
-// current ground. The booth has no theme control of its own: the switch lives in
-// Settings, and the booth reads the choice on load.
+// current ground.
 initTheme();
 
 const SAMPLE_RATE = __SAMPLE_RATE__;
@@ -497,6 +496,32 @@ $("interrupt").onclick = () => {
 };
 
 $("langBtn").onclick = () => setLang(lang === "ar" ? "en" : "ar");
+
+/* ------------------------------------------------------------------- theme */
+
+/* Which glyph is visible is CSS's job — it keys off the same data-theme attribute that
+ * colours the page, so the two cannot drift. All that is left here is the name, which
+ * an icon-only button has no visible text to supply. It states the mode the press moves
+ * *to*, matching the glyph, so a screen reader and a sighted visitor are told the same
+ * thing. `applyLang` cannot do this one: the label changes on every press, not once at
+ * load, so a data-t-label attribute would be right only until the first tap. */
+const themeBtn = $("themeBtn");
+const labelTheme = () => {
+  themeBtn.setAttribute(
+    "aria-label",
+    currentTheme() === "dark" ? S.themeLight : S.themeDark,
+  );
+};
+themeBtn.onclick = () => {
+  toggleTheme();
+  labelTheme();
+  touch();
+};
+labelTheme();
+
+/* No fullscreen control. The kiosk is launched in the browser's own kiosk mode at the
+   stand, so a button that duplicates F11 was one more thing on a visitor's screen —
+   and one more thing they could leave the booth in a strange state with. */
 
 for (const el of ["talk", "q", "avatar"].map($)) {
   el?.addEventListener("pointerdown", touch);

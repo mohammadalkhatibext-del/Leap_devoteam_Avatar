@@ -25,7 +25,6 @@ export const STRINGS = {
     // Two weights in one heading, emphasis on the word that carries the meaning —
     // §2.3. The <b> is the only markup allowed through applyLang.
     attractTitle: "اسألني عن <b>ديفوتيم</b>",
-    attractLead: "اضغط وتحدّث، أو اكتب سؤالك.",
 
     connecting: "جارٍ الاتصال",
     stopSpeaking: "إيقاف الكلام",
@@ -85,7 +84,6 @@ export const STRINGS = {
     subtitle: "LEAP — Riyadh",
 
     attractTitle: "Ask me about <b>Devoteam</b>",
-    attractLead: "Press and speak, or type your question.",
 
     connecting: "Connecting",
     stopSpeaking: "Stop speaking",

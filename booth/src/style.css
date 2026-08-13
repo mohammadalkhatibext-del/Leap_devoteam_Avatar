@@ -196,16 +196,10 @@
 }
 
 /* Glass — §5. One layer, never stacked, 12–16px blur, 70–85% opacity.
-   Dark-theme values, unconditionally: the only glass in the booth sits on the stage,
-   and the stage is always dark (see .stage below). §5's light-theme spec is written
-   for glass over a light ground — used here it composites 75% white over black and
-   turns grey, which is both off-brand and worse to read. */
+   The blur is the one part that does not vary: the only glass in the booth sits on the
+   stage, so the fill, border and sheen are defined with the rest of the stage palette
+   further down, where they can follow the theme along with the ground they sit on. */
 :root {
-  /* §5's dark-theme table says black @70%. That is written for glass over photography;
-     over a mostly dark stage it composites to solid black. 55% with the sheen in
-     `.dv-glass` lands in the same place perceptually and actually looks like glass. */
-  --glass-fill: rgba(0, 0, 0, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.15);
   --glass-blur: 16px;
 }
 
@@ -419,6 +413,17 @@ a.chip {
   border-color: var(--text-muted);
 }
 
+/* One button, two glyphs, and the *attribute the page is actually themed by* decides
+   which one is on screen — not a class the script has to remember to keep in step.
+   The sun shows while the booth is dark and the moon while it is light, because each
+   names the mode the press moves to. Written as a hide rule per theme rather than a
+   show rule, so a missing or unrecognised data-theme leaves the sun (the dark-theme
+   glyph, and dark is the booth default) rather than leaving an empty button. */
+:root[data-theme="light"] .theme-toggle .i-light,
+:root:not([data-theme="light"]) .theme-toggle .i-dark {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------- cards */
 
 .card {
@@ -527,14 +532,19 @@ body.booth {
   background: var(--surface-base);
 }
 
+/* Wide. A 1320px column on the 1920px panel the booth actually runs on left ~300px of
+   empty page ground down each side and shrank the one thing a visitor came to look at.
+   The cap is still there — the layout should not stretch indefinitely on an ultrawide —
+   but it now sits above the kiosk's own width, so on that screen the margin is the
+   padding below and nothing else. */
 .shell {
   height: 100dvh;
-  max-width: 1320px;
+  max-width: 2100px;
   margin: 0 auto;
-  padding: 0 clamp(16px, 2.2vw, 32px) clamp(14px, 2vh, 26px);
+  padding: 0 clamp(12px, 1.4vw, 26px) clamp(10px, 1.4vh, 18px);
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 1.4vh, 18px);
+  gap: clamp(8px, 1vh, 14px);
 }
 
 /* ------------------------------------------------------------------ masthead */
@@ -546,7 +556,9 @@ body.booth {
   display: flex;
   align-items: center;
   gap: clamp(10px, 1.4vw, 20px);
-  padding: clamp(10px, 1.6vh, 18px) 0;
+  /* Trimmed from 18px. The band is legally required chrome, not content — every row of
+     it comes straight off the stage's height, and the stage is the product. */
+  padding: clamp(8px, 1.1vh, 13px) 0;
 }
 
 /* The band runs the full width of the screen rather than the column, and fades out
@@ -657,7 +669,11 @@ body.booth {
    putting it here would also mean two glass layers on one screen. So it is an honest
    opaque surface, and the one glass layer stays where it earns its keep: on the video. */
 .rail {
-  flex: 0 0 clamp(250px, 25%, 380px);
+  /* A reading column, not a second pane competing with the stage. 25% of a wide screen
+     is far more width than a paragraph of subtitle needs — it just sets long lines and
+     takes the room off the face. Roughly 45–70 characters per line is the readable
+     band, and that is what this width holds at the booth's root size. */
+  flex: 0 0 clamp(230px, 17%, 330px);
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -671,6 +687,8 @@ body.booth {
      ground, so on dark the panel's edge is the only thing separating the two. */
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
 }
 /* Below this the two panes stop being two panes — the rail would be narrower than the
    longest Arabic word. It stacks under the stage instead, which is the same content in
@@ -709,12 +727,90 @@ body.booth {
 
 /* --------------------------------------------------------------------- stage */
 
-/* The stage is a dark context by definition — it is either live video or the dark
-   stand-in for it, never a light surface. Re-declaring the dark token set here means
-   everything layered on it (subtitle, badge, glass sheet, sources) stays legible
-   without a single hardcoded colour, and the theme is left to govern the chrome that
-   genuinely can be light: the operator panel and the admin page. */
+/* The stage follows the theme, and everything that sits on it is drawn from this one
+   token set rather than from hardcoded black and white.
+
+   That set is what makes the panel switchable at all. A dozen rules below layer things
+   over the picture — badge, no-picture pill, stop button, attract heading, the glass
+   sheet and its chips — and each of them needs a veil, a hairline and an ink that agree
+   with the ground underneath. Naming them once means flipping the stage is one block,
+   not a hunt for every `rgba(255, 255, 255, 0.16)` in the file.
+
+   The veils and the scrim are also what keeps this honest over *live video*, which can
+   be any colour at all. They guarantee the floor: the composite under every control is
+   at least this dark on dark, or this light on light, so the text on top is measured
+   against a known value rather than against whatever frame happens to be playing.
+
+   Dark first — it is the booth default, because an exhibition hall is bright overhead
+   and a dark panel makes the avatar's face the brightest thing on the screen. */
 .stage {
+  --stage-ground: #0b0b0a;
+  /* The ground behind the video: a deep neutral with a soft poppy bloom. §8.1 — with no
+     brand photography in the repo, build heroes on the dark surfaces and let neon supply
+     the richness. The low bloom is load-bearing rather than decorative: it sits directly
+     under the glass sheet, and §5's glass needs a visually rich background to blur. */
+  --stage-canvas: radial-gradient(
+      120% 62% at 50% 104%,
+      rgba(248, 72, 94, 0.2) 0%,
+      rgba(248, 72, 94, 0.05) 46%,
+      rgba(248, 72, 94, 0) 72%
+    ),
+    radial-gradient(68% 54% at 50% 38%, rgba(248, 72, 94, 0.16) 0%, rgba(248, 72, 94, 0) 70%),
+    radial-gradient(90% 70% at 18% 8%, rgba(120, 130, 160, 0.09) 0%, rgba(120, 130, 160, 0) 60%),
+    #161615;
+  --stage-edge: transparent;
+  --stage-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+
+  /* Sits under the controls, so the darkest composite is what the text is measured on
+     and the video underneath can be anything. */
+  --scrim: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.62) 0%,
+    rgba(0, 0, 0, 0.3) 26%,
+    rgba(0, 0, 0, 0) 52%
+  );
+
+  --stage-veil: rgba(0, 0, 0, 0.45);
+  --stage-veil-strong: rgba(0, 0, 0, 0.62);
+  --stage-hairline: rgba(255, 255, 255, 0.16);
+  --stage-hairline-hover: rgba(255, 255, 255, 0.32);
+  --stage-wash: rgba(255, 255, 255, 0.1);
+  --stage-wash-soft: rgba(255, 255, 255, 0.06);
+  --stage-ink: #ffffff;
+  --stage-ink-soft: rgba(255, 255, 255, 0.82);
+
+  /* The attract heading is display type over a face. The scrim guarantees a floor, but
+     a pale video frame can still come through it, so the shadow is the belt to the
+     scrim's braces — and the local dim exists only while the copy does, so the picture
+     is not permanently darkened for a line that is on screen a fraction of the time. */
+  --stage-text-shadow: 0 2px 20px rgba(0, 0, 0, 0.65), 0 1px 3px rgba(0, 0, 0, 0.5);
+  --attract-dim: radial-gradient(
+    58% 130% at 50% 50%,
+    rgba(0, 0, 0, 0.6) 0%,
+    rgba(0, 0, 0, 0) 74%
+  );
+
+  /* §5's dark table says black @70%. That is written for glass over photography; over a
+     mostly dark stage it composites to solid black. 55% with the sheen lands in the same
+     place perceptually and actually looks like glass. The sheen is a [derived] extension
+     — §5 specifies a fill, not a finish, and real glass catches light along its top face.
+     Without it the pane reads as paint. */
+  --glass-fill: rgba(0, 0, 0, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --glass-sheen: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.035) 44%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  --glass-solid: rgba(20, 20, 19, 0.94);
+}
+
+/* On dark the stage is a dark context whatever the page ground is doing, so the role
+   tokens are pinned here — the picture is video or a dark stand-in for video, never
+   --surface-base. Scoped to the theme rather than declared flat, because in the light
+   theme the stage is genuinely light and must inherit the root's light roles instead. */
+:root:not([data-theme="light"]) .stage {
   --surface-1: #1e1e1d;
   --surface-2: #2a2a28;
   --text: #ffffff;
@@ -735,6 +831,71 @@ body.booth {
   --warning: var(--dv-intense-fire);
 }
 
+/* Light theme: the stage is white, like the rail beside it and the operator panel
+   behind it. The whole set inverts together — a white ground with white veils and dark
+   ink — rather than leaving a black rectangle in the middle of a light page, which is
+   what a dark-only stage looked like once the rest of the booth went light.
+
+   The contrast floor holds at the worst case, which is glass over pure *black* video:
+   the scrim puts the composite at 0.78 white, the 0.78 glass fill lifts it to ~0.95,
+   and --dv-grey ink on that measures about 10:1 — past §5's 4.5:1 against the combined
+   colour, with the same margin the dark stage has against white video. */
+:root[data-theme="light"] .stage {
+  --stage-ground: #ffffff;
+  /* Same three blooms, pulled back: over white they only need to give the glass
+     something to blur, not to carry the whole panel the way they do on black. */
+  --stage-canvas: radial-gradient(
+      120% 62% at 50% 104%,
+      rgba(248, 72, 94, 0.16) 0%,
+      rgba(248, 72, 94, 0.04) 46%,
+      rgba(248, 72, 94, 0) 72%
+    ),
+    radial-gradient(68% 54% at 50% 38%, rgba(248, 72, 94, 0.09) 0%, rgba(248, 72, 94, 0) 70%),
+    radial-gradient(90% 70% at 18% 8%, rgba(120, 130, 160, 0.12) 0%, rgba(120, 130, 160, 0) 60%),
+    #ffffff;
+  /* White on #f7f6f5 is a one-step difference. Without a hairline the stage has no edge
+     at all and the rounded corners simply vanish. */
+  --stage-edge: rgba(60, 60, 58, 0.14);
+  --stage-shadow: 0 1px 2px rgba(60, 60, 58, 0.06), 0 18px 50px rgba(60, 60, 58, 0.11);
+
+  --scrim: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.42) 26%,
+    rgba(255, 255, 255, 0) 52%
+  );
+
+  --stage-veil: rgba(255, 255, 255, 0.82);
+  --stage-veil-strong: rgba(255, 255, 255, 0.9);
+  --stage-hairline: rgba(60, 60, 58, 0.2);
+  --stage-hairline-hover: rgba(60, 60, 58, 0.44);
+  --stage-wash: rgba(60, 60, 58, 0.08);
+  --stage-wash-soft: rgba(60, 60, 58, 0.05);
+  --stage-ink: var(--dv-grey);
+  --stage-ink-soft: #6e6e68;
+
+  --stage-text-shadow: 0 2px 18px rgba(255, 255, 255, 0.85), 0 1px 3px rgba(255, 255, 255, 0.7);
+  --attract-dim: radial-gradient(
+    58% 130% at 50% 50%,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0) 74%
+  );
+
+  /* Here §5's light-theme glass is the right spec, because the ground genuinely is
+     light: white at 78%, inside the 70–85% band. The sheen inverts to a faint grey at
+     the foot — a white sheen on white glass is invisible, and the edge is the part that
+     makes it read as a sheet rather than as paint. */
+  --glass-fill: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(60, 60, 58, 0.16);
+  --glass-sheen: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0) 46%,
+    rgba(60, 60, 58, 0.05) 100%
+  );
+  --glass-solid: rgba(255, 255, 255, 0.95);
+}
+
 .stage {
   /* Not decoration: `color` is computed on <body> from whatever --text was there, and
      descendants inherit that computed value rather than re-reading the variable. Without
@@ -752,8 +913,15 @@ body.booth {
   min-height: 0;
   border-radius: var(--radius-hero);
   overflow: hidden;
-  background: #0b0b0a;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  background: var(--stage-ground);
+  border: 1px solid var(--stage-edge);
+  box-shadow: var(--stage-shadow);
+  /* Matches the fade <body> already does. Until the toggle above existed the theme only
+     changed from the admin page, so nobody ever watched the booth flip; now they watch
+     it on every press, and the largest surface on the screen snapping while the ground
+     behind it fades reads as a glitch. */
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
 }
 
 .stage video {
@@ -766,48 +934,25 @@ body.booth {
   display: block;
 }
 
-/* Dimming layers. Glass over live video cannot be contrast-checked against the video,
-   so §5's "verify against the combined colour" is met by guaranteeing the floor:
-   these scrims sit under the controls, so the darkest composite is what the text is
-   measured on and the video can be anything. */
+/* Dimming layer. Glass over live video cannot be contrast-checked against the video,
+   so §5's "verify against the combined colour" is met by guaranteeing the floor — see
+   --scrim in the stage palette, which flips to a white haze in the light theme so the
+   dark ink on that stage gets the same guarantee. */
 .scrim {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.62) 0%,
-    rgba(0, 0, 0, 0.3) 26%,
-    rgba(0, 0, 0, 0) 52%
-  );
+  background: var(--scrim);
 }
 
-/* The ground behind the video: a deep neutral with a soft poppy bloom. §8.1 — with no
-   brand photography in the repo, build heroes on the dark surfaces and let neon supply
-   the richness. A loop video drops in behind this without touching anything else. */
+/* The ground behind the video. A loop video drops in behind this without touching
+   anything else. */
 .stage::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    /* A second bloom low on the stage, under where the glass sheet sits. Without it
-       the sheet blurs a flat black rectangle, which is the same as blurring nothing —
-       §5's "glass needs a visually rich background", supplied by neon per §8.1 since
-       there is no brand photography in the repo. */
-    radial-gradient(
-      120% 62% at 50% 104%,
-      rgba(248, 72, 94, 0.2) 0%,
-      rgba(248, 72, 94, 0.05) 46%,
-      rgba(248, 72, 94, 0) 72%
-    ),
-    radial-gradient(
-      68% 54% at 50% 38%,
-      rgba(248, 72, 94, 0.16) 0%,
-      rgba(248, 72, 94, 0) 70%
-    ),
-    radial-gradient(90% 70% at 18% 8%, rgba(120, 130, 160, 0.09) 0%, rgba(120, 130, 160, 0) 60%),
-    #161615;
+  background: var(--stage-canvas);
   opacity: 0;
   transition: opacity var(--dur-slow) var(--ease-soft);
 }
@@ -838,8 +983,8 @@ body[data-phase="connecting"] .stage::before {
   max-width: calc(100% - 32px);
   padding: 8px 16px 8px 10px;
   border-radius: var(--radius-label);
-  background: rgba(0, 0, 0, 0.62);
-  border: 1px solid var(--border);
+  background: var(--stage-veil-strong);
+  border: 1px solid var(--stage-hairline);
   opacity: 0;
   visibility: hidden;
   transition: opacity var(--dur-base) var(--ease-out), visibility var(--dur-base);
@@ -855,27 +1000,39 @@ body[data-face="none"] .noface {
 }
 .noface p {
   font-size: var(--text-micro);
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--stage-ink-soft);
   line-height: 1.4;
 }
 
 /* ------------------------------------------------------------------- attract */
 
+/* Low on the stage, not across the middle of it. Centred vertically it landed on the
+   avatar's face — the one thing a passer-by is meant to look at — and white display type
+   over a brightly lit office wall is also where the contrast was worst. Down here it
+   sits in the scrim's dark zone, above the badge, over shoulders rather than eyes. */
 .attract {
   position: absolute;
   inset-inline: 0;
-  top: 50%;
-  transform: translateY(-56%);
+  bottom: calc(var(--above-sheet) + 56px);
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
   padding: 0 6vw;
   text-align: center;
+  text-shadow: var(--stage-text-shadow);
   opacity: 0;
   visibility: hidden;
   transition: opacity var(--dur-slow) var(--ease-soft), visibility var(--dur-slow);
+}
+/* Localised dimming that only exists while the attract copy does — see --attract-dim. */
+.attract::before {
+  content: "";
+  position: absolute;
+  inset: -32px -8vw;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--attract-dim);
 }
 body[data-phase="boot"] .attract,
 body[data-phase="attract"] .attract,
@@ -884,15 +1041,9 @@ body[data-phase="connecting"] .attract {
   visibility: visible;
 }
 .attract h1 {
-  font-size: clamp(var(--text-h2), 4.4vw, var(--text-h1));
-  line-height: 1.1;
+  font-size: clamp(var(--text-h3), 3.6vw, var(--text-h1));
+  line-height: 1.12;
   max-width: 18ch;
-}
-.attract .lead {
-  font-size: var(--text-lg);
-  font-weight: 400;
-  color: var(--text-muted);
-  max-width: 34ch;
 }
 
 /* --------------------------------------------------------------------- badge */
@@ -911,8 +1062,8 @@ body[data-phase="connecting"] .attract {
   text-transform: uppercase;
   padding: 6px 12px;
   border-radius: var(--radius-label);
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: var(--stage-veil-strong);
+  color: var(--stage-ink);
   opacity: 0;
   transition: opacity var(--dur-base) var(--ease-out);
 }
@@ -986,9 +1137,9 @@ body[data-phase="speaking"] .subtitle:not(:empty)::after {
      control that only appears while the avatar is talking. */
   min-height: var(--tap-min);
   padding: 7px 13px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #fff;
+  background: var(--stage-veil);
+  border: 1px solid var(--stage-hairline);
+  color: var(--stage-ink);
   font-size: var(--text-micro);
   box-shadow: none;
   opacity: 0;
@@ -1004,29 +1155,17 @@ body[data-phase="speaking"] .stop {
 
 /* The one glass layer on the page. Never nested, never stacked — §5.
 
-   Two things stopped it reading as glass. The scrim above put 84% black under the
-   panel, so 70% black glass composited over near-black and the result was simply an
-   opaque black box — the blur had nothing left to reveal. And a flat dark fill has no
-   edge: real glass catches light along its top face, and without that the pane reads as
-   paint rather than as a sheet of something.
+   Two things stopped it reading as glass on the dark stage. The scrim above put 84%
+   black under the panel, so 70% black glass composited over near-black and the result
+   was simply an opaque black box — the blur had nothing left to reveal. And a flat fill
+   has no edge: real glass catches light along one face, and without that the pane reads
+   as paint rather than as a sheet of something. So the scrim is softer, the fill is
+   lighter than §5's 70%, and a sheen sits over it.
 
-   So: the scrim is softer (it still guarantees the contrast floor — see below), the
-   fill is lighter than §5's 70%, and a white sheen sits over it. The sheen is a
-   [derived] extension; §5 specifies a fill, not a finish, and on a black stage the
-   specified fill alone is indistinguishable from the surface it sits on.
-
-   The contrast floor still holds at the worst case, which is glass over pure white
-   video: 0.62 scrim then 0.55 fill leaves the composite at roughly sRGB 0.24, and
-   white text on that is about 10:1 — well past §5's 4.5:1 requirement against the
-   combined colour. */
+   Both are tokens now (--glass-fill, --glass-sheen) because the panel underneath can be
+   black or white; the contrast floors for each are worked out with the stage palette. */
 .dv-glass {
-  background: linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.035) 44%,
-      rgba(255, 255, 255, 0.07) 100%
-    ),
-    var(--glass-fill);
+  background: var(--glass-sheen), var(--glass-fill);
   border: 1px solid var(--glass-border);
   /* Saturation is what separates glass from smoked plastic: the blur alone averages
      the colour behind it toward grey, and lifting it back keeps the video reading
@@ -1039,7 +1178,7 @@ body[data-phase="speaking"] .stop {
    too slow for it, which is the likelier of the two. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .dv-glass {
-    background: rgba(20, 20, 19, 0.94);
+    background: var(--glass-solid);
   }
 }
 
@@ -1144,15 +1283,15 @@ input.ask {
   font-size: var(--text-sm);
   padding: 8px 14px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #fff;
+  border: 1px solid var(--stage-hairline);
+  color: var(--stage-ink);
   transition: background var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out);
 }
 input.ask:hover:not(:disabled),
 input.ask:focus {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--stage-wash-soft);
+  border-color: var(--stage-hairline-hover);
 }
 
 .sheet-aside {
@@ -1206,17 +1345,17 @@ input.ask:focus {
   padding: 7px 13px;
   border-radius: var(--radius-label);
   background: transparent;
-  color: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--stage-ink-soft);
+  border: 1px solid var(--stage-hairline);
   box-shadow: none;
   transition: background var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 .suggest button:hover:not(:disabled),
 .sources-toggle:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.32);
-  color: #fff;
+  background: var(--stage-wash);
+  border-color: var(--stage-hairline-hover);
+  color: var(--stage-ink);
 }
 
 /* ------------------------------------------------------------------- sources */
@@ -1228,9 +1367,9 @@ input.ask:focus {
   flex: none;
 }
 .sources-toggle[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.34);
-  color: #fff;
+  background: var(--stage-wash);
+  border-color: var(--stage-hairline-hover);
+  color: var(--stage-ink);
 }
 
 /* In the rail, under the answer it belongs to — sources and the text they support are
