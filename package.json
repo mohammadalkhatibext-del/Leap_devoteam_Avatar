@@ -5,6 +5,8 @@
   "description": "Devoteam LEAP booth avatar — Deepgram STT -> Claude + Citations -> Arabic TTS -> Anam.",
   "scripts": {
     "booth": "vite --config booth/vite.config.mjs",
+    "build": "vite build --config booth/vite.config.mjs",
+    "start": "node server/index.mjs",
     "ask": "node scripts/ask.mjs",
     "speak": "node scripts/speak.mjs",
     "check:anam": "node scripts/check-anam.mjs",

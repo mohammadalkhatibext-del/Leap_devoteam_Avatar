@@ -756,14 +756,58 @@ body.booth {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
 }
 
+/**
+ * Stage framing. Both values are written by booth/src/main.js from operator settings
+ * when a renderer connects, so a new avatar id that sits differently in frame is a
+ * settings change rather than a stylesheet edit on the morning of an event.
+ *
+ * The fallbacks here are Anam's, because Anam is the shipping renderer and a stage
+ * that has not been told anything should look like the one that was tested.
+ */
+:root {
+  --stage-fit: cover;
+  --stage-zoom: 1;
+  --stage-focus-y: 22%;
+}
+
 .stage video {
   width: 100%;
   height: 100%;
-  /* Anchored high: a portrait-framed avatar cropped from the centre loses forehead
-     before it loses floor, and the face is the entire product. */
-  object-fit: cover;
-  object-position: 50% 22%;
+  /**
+   * `cover` for a portrait source, `contain` for a square one — set per renderer,
+   * because it is a property of the video the vendor sends rather than a taste.
+   *
+   * Simli streams 512×512. Under `cover` a square forced into a portrait stage is
+   * scaled until its width overflows, cropping the head on every side; under
+   * `contain` the whole frame fits and the stage's dark ground shows at the edges.
+   * The bars are the correct trade: an operator can see they are deliberate, whereas
+   * a cropped forehead just looks broken.
+   */
+  object-fit: var(--stage-fit);
+  /* Anchored high under `cover`: a portrait avatar cropped from the centre loses
+     forehead before it loses floor, and the face is the entire product. */
+  object-position: 50% var(--stage-focus-y);
   display: block;
+
+  /**
+   * Zoom, as a transform rather than as `object-fit: contain`.
+   *
+   * The complaint this solves is Simli: its preset faces arrive framed much tighter
+   * than Anam's, so at zoom 1 the top of the head is cut off by the edge of the stage.
+   * `contain` would fix the crop and introduce letterbox bars in exchange — two black
+   * columns beside the face on a portrait booth screen, which looks like a broken
+   * stream rather than a design choice.
+   *
+   * Scaling below 1 instead pulls the whole picture back inside the stage and leaves
+   * the stage's own background showing at the edges, which is already the dark ground
+   * the video sits on. `transform-origin` follows the focus point so the face stays
+   * put as it shrinks rather than drifting toward a corner.
+   */
+  transform: scale(var(--stage-zoom));
+  transform-origin: 50% var(--stage-focus-y);
+  /* The transform is composited on its own layer, so the browser is told once rather
+     than re-promoting the layer on every settings change. */
+  will-change: transform;
 }
 
 /* Dimming layers. Glass over live video cannot be contrast-checked against the video,
@@ -844,7 +888,11 @@ body[data-phase="connecting"] .stage::before {
   visibility: hidden;
   transition: opacity var(--dur-base) var(--ease-out), visibility var(--dur-base);
 }
-body[data-face="none"] .noface {
+/* Not while asleep. "The picture isn't available" is a fault report, and before the
+   first tap there is no fault — nothing has been asked for yet. Showing it there
+   contradicts the invitation sitting directly underneath it and tells a visitor the
+   booth is broken at the exact moment it is trying to get them to touch it. */
+body[data-face="none"]:not([data-phase="asleep"]):not([data-phase="boot"]) .noface {
   opacity: 1;
   visibility: visible;
 }
@@ -878,6 +926,7 @@ body[data-face="none"] .noface {
   transition: opacity var(--dur-slow) var(--ease-soft), visibility var(--dur-slow);
 }
 body[data-phase="boot"] .attract,
+body[data-phase="asleep"] .attract,
 body[data-phase="attract"] .attract,
 body[data-phase="connecting"] .attract {
   opacity: 1;
@@ -893,6 +942,49 @@ body[data-phase="connecting"] .attract {
   font-weight: 400;
   color: var(--text-muted);
   max-width: 34ch;
+}
+
+/* Exactly one lead line is ever on screen: the invitation before the first tap, the
+   instructions after it. `display: none` rather than opacity, so the hidden one is out
+   of the accessibility tree too — a screen reader announcing both would be telling the
+   visitor to touch a screen that is already awake. */
+.attract .tap-lead {
+  display: none;
+}
+body[data-phase="asleep"] .attract .tap-lead {
+  display: block;
+}
+body[data-phase="asleep"] .attract .lead:not(.tap-lead) {
+  display: none;
+}
+
+/* The invitation earns more weight than the instructions it replaces: it is the only
+   thing asking a passer-by to do something, and it competes with an exhibition hall. */
+body[data-phase="asleep"] .attract .tap-lead {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* A slow pulse on the whole panel. Motion is what a peripheral eye catches in a hall,
+   and this is the only place the booth uses it — reserved for the one state where
+   nobody is looking yet. Stops the moment a session is live, so it never competes with
+   a face that is speaking. */
+body[data-phase="asleep"] .stage {
+  cursor: pointer;
+  animation: standby 3.6s var(--ease-soft) infinite;
+}
+@keyframes standby {
+  0%, 100% { box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5); }
+  50% { box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.16); }
+}
+
+/* §1.6 — a booth screen sits in a hall for three days and vestibular triggers are not
+   optional to honour. The invitation still reads, it just stops moving. */
+@media (prefers-reduced-motion: reduce) {
+  body[data-phase="asleep"] .stage {
+    animation: none;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.22);
+  }
 }
 
 /* --------------------------------------------------------------------- badge */

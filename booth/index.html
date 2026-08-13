@@ -139,10 +139,14 @@
             <p data-t="textOnly"></p>
           </div>
 
-          <!-- Shown until a visitor speaks. There is no Start button: the session opens
-               on load, and this is what fills the wait while it negotiates. -->
+          <!-- Shown until a visitor speaks. The stage itself is the start control, so
+               there is no Start button to aim at — the lead line swaps to the
+               invitation while the booth is asleep and to the instructions once it is
+               awake. Both are in the DOM at all times so a screen reader reaches
+               whichever one the phase is currently showing. -->
           <div class="attract">
             <h1 data-t-html="attractTitle"></h1>
+            <p class="lead tap-lead" data-t="tapLead"></p>
             <p class="lead" data-t="attractLead"></p>
           </div>
 
@@ -204,7 +208,11 @@
       </div>
 
       <div class="row">
-        <button id="connect" class="secondary">Reconnect</button>
+        <button id="connect" class="secondary">Wake avatar</button>
+        <!-- Closing up, or freeing the vendor's concurrency slot for another machine.
+             Without this the only way to end a paid session early is to close the tab
+             and trust the pagehide beacon. -->
+        <button id="sleepNow" class="secondary">Sleep now</button>
         <button id="reset" class="secondary" disabled>New visitor</button>
         <a class="chip" href="/admin.html">Settings</a>
       </div>
