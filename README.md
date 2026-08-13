@@ -224,15 +224,98 @@ nothing else — then swapping renderers is one env var, not a rewrite.
 
 ---
 
+## Speed — where the seconds went
+
+The number that matters is **time from the visitor finishing their question to the
+avatar's first spoken word**. It was about 8.3 s. It is now about 3.0 s, with no loss of
+grounding. Every figure below is measured on this machine, not estimated; re-run them
+with `node scripts/speak.mjs "ما هي ديفوتيم؟"`, which uses the booth's saved settings so
+it reports what a visitor would actually get.
+
+| Leg | Was | Now | What changed |
+|---|---:|---:|---|
+| Microphone hang-up | 1100 ms | 650 ms | `SILENCE_MS` in `booth/src/mic.js`. Pure dead time — the question is already over. |
+| Speech to text | ~300 ms | ~300 ms | Unchanged. Never the bottleneck; a booth clip is ~3 s, and the 1.7 s you get benchmarking a 10 s fixture is an artefact of the fixture. |
+| Answer, to first speakable text | ~3400 ms | ~1780 ms | Clause-level first flush (`Sentencer`, `server/claude.mjs`) — start speaking at the first comma instead of waiting for the full stop. |
+| Voice, first sentence | ~3420 ms | ~290 ms | OpenAI `gpt-4o-mini-tts` → ElevenLabs Flash v2.5 on the `/stream` endpoint. **The single biggest win.** |
+| **Total to first word** | **~8.3 s** | **~3.0 s** | |
+| Spoken answer length | 41 words / ~19 s | 27 words / ~12 s | Length rule restated next to the question rather than only in the system prompt. |
+| Booth JS downloaded | 1249 kB | 137 kB | Renderer adapters are dynamic imports, so only the selected vendor's SDK is fetched. |
+
+Two of these are worth knowing about before changing anything:
+
+**The "one moment please" filler is gone**, and it must not come back without
+re-measuring. It existed to cover the old eight-second gap. At three seconds it is no
+longer covering anything — it is a sentence the visitor did not ask for in front of
+every answer, which is the difference between an assistant and a hold queue.
+
+**The length rule lives next to the question, not in the system prompt.** Measured over
+twelve samples: in the system prompt alone it produced 41 words on a 22-word budget;
+restated after the documents it produced 27. An earlier, harder version got it to 19 —
+and dropped citations from 12/12 to 0/12, because under a hard cap the model composes
+instead of grounding. The last sentence of `buildLengthDirective` is what buys brevity
+without spending the guardrail. Do not trim it.
+
+**Haiku 4.5 is selectable** in Settings and is genuinely ~1 s faster to first token. It
+is not the default because on the same three Arabic questions it ran 62, 32 and 19 words
+against a 22-word budget and wrote "11,000" in digits where the prompt asks for words —
+which an Arabic voice can read wrong out loud. Judge it by ear before an event, not
+during one.
+
+---
+
+## Running it
+
+```bash
+npm run booth        # development, hot reload, port 5174
+npm run build        # production assets -> dist/
+npm start            # production server on dist/, port 8080
+```
+
+The API lives in `server/api.mjs` as a plain Node handler and is mounted by both the
+Vite dev plugin and `server/index.mjs`. It used to live inside `vite.config.mjs`, which
+meant the booth could only run under a dev server — `vite build` produced something that
+could not answer a question.
+
+### Docker
+
+```bash
+docker compose up -d --build     # http://localhost:8080
+docker compose logs -f booth
+docker compose restart booth     # the fix for almost everything
+docker compose down
+```
+
+Keys come from `.env` via `env_file`; they are never baked into the image, and
+`.dockerignore` keeps `.env` out of the build context entirely. Operator settings live
+in a named volume, so `--build` does not reset the avatar and voice.
+
+Containerising found a bug that Windows had been hiding: `simli-client@3.0.2` does
+`require("./Client")` but ships `client.js`, so **the repo could not be built on Linux at
+all** — container or cloud host. `fixSimliClientCasing` in `booth/vite.config.mjs` works
+around it; remove that plugin once the vendor ships a fixed `dist`.
+
+Full event deployment — cloud primary, booth PC fallback, TLS, kiosk flags, the
+runbook — is in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+---
+
 ## Known gaps
 
 - **Devoteam logo SVGs are missing.** `DEVOTEAM_BRAND_DESIGN.md` §3.1 references
   `Assets/*.svg`; that folder isn't in this repo or the HRSD project. Needed for the
   header and favicon.
-- **No Arabic TTS that can ship.** Azure and ElevenLabs are both card-blocked, so the
-  only working Arabic voice is `edge-tts`, an unofficial endpoint. Fine for building;
-  must not be what runs on the booth floor. Quality is not the issue — it is the same
-  Microsoft neural voice Azure sells.
+- ~~**No Arabic TTS that can ship.**~~ Resolved. ElevenLabs is live on a Creator plan
+  with four voices (two languages × two genders) and is now the default engine — also
+  the fastest by an order of magnitude. `edge-tts` remains selectable for offline
+  development and still must not run at LEAP.
+- **The avatar is Dania, not Faisal.** `ANAM_AVATAR_ID` resolves to Dania (female);
+  the comment beside it claimed "Faisal - Cultural Guide" for months and was simply
+  wrong. The voice gender default follows the avatar that actually ships. Faisal is on
+  the same account (`bba96e80-…`) — switching means changing **both**, or the booth
+  shows a woman speaking with a man's voice.
+- **The operator page has no authentication.** Fine on `localhost`; on any public URL
+  it needs a basic-auth gate — see `DEPLOYMENT.md` §2.5.
 - **Two renderers are reachable** (Anam and Simli). HeyGen and Tavus are still
   card-blocked. Simli unblocked on 2026-08-09, so there is now a real second vendor
   rather than only the `STRATEGY.md` §5 fallback.

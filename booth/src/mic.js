@@ -12,7 +12,21 @@
  * own first moments rather than hard-coded.
  */
 
-const SILENCE_MS = 1100; // hang-up delay after the visitor stops talking
+/**
+ * Hang-up delay after the visitor stops talking.
+ *
+ * This is the single most expensive number in the booth, because it is pure dead time:
+ * the question is already complete and nothing downstream has started. It was 1100 ms,
+ * which is a comfortable pause in conversation and an eternity in front of a screen —
+ * it alone was an eighth of the old end-to-end wait.
+ *
+ * 650 ms is short enough to feel immediate and still longer than the pauses Arabic
+ * speakers leave mid-sentence — around a conjunction, or before a list. Below about
+ * 500 ms the recogniser starts cutting people off mid-question, which costs far more
+ * than it saves: the visitor has to ask again, in a loud hall, in front of other
+ * people. If anything at LEAP gets truncated, raise this before touching anything else.
+ */
+const SILENCE_MS = 650;
 const MAX_MS = 15000; // hard cap — nobody asks a booth a 15-second question
 const CALIBRATE_MS = 250; // sample the room before deciding what counts as speech
 const SPEECH_MARGIN = 2.2; // speech must exceed the noise floor by this factor

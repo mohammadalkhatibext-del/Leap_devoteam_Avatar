@@ -25,6 +25,13 @@ export const STRINGS = {
     // Two weights in one heading, emphasis on the word that carries the meaning —
     // §2.3. The <b> is the only markup allowed through applyLang.
     attractTitle: "اسألني عن <b>ديفوتيم</b>",
+    attractLead: "اضغط وتحدّث، أو اكتب سؤالك.",
+
+    // Shown only before the first tap, in place of attractLead. An instruction, not a
+    // greeting: the one thing a visitor needs to know at a sleeping stand is that the
+    // screen responds to being touched at all.
+    tapLead: "المس الشاشة للبدء",
+    tapToStart: "بانتظارك",
 
     connecting: "جارٍ الاتصال",
     stopSpeaking: "إيقاف الكلام",
@@ -84,6 +91,10 @@ export const STRINGS = {
     subtitle: "LEAP — Riyadh",
 
     attractTitle: "Ask me about <b>Devoteam</b>",
+    attractLead: "Press and speak, or type your question.",
+
+    tapLead: "Touch the screen to begin",
+    tapToStart: "Tap to start",
 
     connecting: "Connecting",
     stopSpeaking: "Stop speaking",
