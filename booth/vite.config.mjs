@@ -5,13 +5,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const BOOTH = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(BOOTH);
 
-try {
-  process.loadEnvFile(path.join(ROOT, ".env"));
-} catch {}
-
 // `import()` of an absolute path is a URL, and on Windows "C:\..." parses as a
 // protocol — so these must be converted to file:// URLs rather than passed raw.
 const load = (...seg) => import(pathToFileURL(path.join(ROOT, ...seg)).href);
+
+// Same loader the production server uses, so a shadowed key is reported in dev too —
+// dev is where a stray `$env:…` gets typed in the first place.
+const { loadEnvAndReport } = await load("server", "env.mjs");
+loadEnvAndReport(path.join(ROOT, ".env"));
 
 const { boothApi, startTtsSupervisor, SAMPLE_RATE } = await load("server", "api.mjs");
 

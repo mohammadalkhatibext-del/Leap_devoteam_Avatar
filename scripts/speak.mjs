@@ -20,7 +20,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-process.loadEnvFile(path.join(ROOT, ".env"));
+
+// This script's whole claim is that the number it prints is the number the stand will
+// produce. An environment variable shadowing .env breaks that claim silently — it did,
+// once, and this script cheerfully reported a model upgrade that was not in effect.
+const { loadEnvAndReport } = await import("../server/env.mjs");
+loadEnvAndReport(path.join(ROOT, ".env"));
 
 const { ask } = await import("../server/claude.mjs");
 const { ensureTts, prewarmEngine, SpeechQueue, toWav, SAMPLE_RATE } = await import(

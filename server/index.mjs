@@ -18,17 +18,15 @@ import path from "node:path";
 import { createReadStream } from "node:fs";
 import { stat, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { loadEnvAndReport } from "./env.mjs";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // Load .env before anything reads a key. In the container the values usually arrive as
 // real environment variables instead, and loadEnvFile does not overwrite those — which
 // is the behaviour we want: `docker run -e` beats a stale file baked into an image.
-try {
-  process.loadEnvFile(path.join(ROOT, ".env"));
-} catch {
-  /* no .env — expected when the environment supplies the keys directly */
-}
+// Whatever the file loses, it loses out loud: see server/env.mjs.
+loadEnvAndReport(path.join(ROOT, ".env"));
 
 const { boothApi, startTtsSupervisor } = await import("./api.mjs");
 
@@ -156,6 +154,20 @@ server.listen(PORT, HOST, async () => {
     console.log(
       `\n  ${settings.avatarProvider} · ${settings.ttsEngine} · ${settings.sttEngine} · ${settings.answerModel}`,
     );
+    // The engine name is not the model name, and it is the model that changed under us
+    // once already. Print what will actually be sent, resolved exactly as the request
+    // resolves it, so a stale override is visible at boot rather than in a transcript.
+    if (settings.sttEngine === "openai") {
+      log.info(`stt model  ${process.env.OPENAI_STT_MODEL?.trim() || "gpt-transcribe"}`);
+    }
+    if (settings.ttsEngine === "openai") {
+      log.info(`tts model  ${process.env.OPENAI_TTS_MODEL?.trim() || "gpt-4o-mini-tts"}`);
+    }
+    if (settings.ttsEngine === "elevenlabs") {
+      log.info(
+        `tts model  ${settings.elevenModel || process.env.ELEVENLABS_MODEL_ID?.trim() || "eleven_flash_v2_5"}`,
+      );
+    }
   }
   if (!process.env.ANTHROPIC_API_KEY) {
     log.error("ANTHROPIC_API_KEY is not set — the booth cannot answer anything.");
