@@ -11,8 +11,12 @@
  *   OpenAI, this list        6 / 6
  *
  * It also pulled "Google Cloud" and "Kubernetes" back into Latin script from
- * "كوك كلاود" and "كوبرنيتيس". ("Azure" still comes through as "أجر" — unsolved, and
- * the one term worth listening for when someone asks about it.)
+ * "كوك كلاود" and "كوبرنيتيس".
+ *
+ * "Azure" was the one term the list could not rescue on `gpt-4o-transcribe` — it came
+ * through as "أجر" or "أزور" no matter what. Moving to `gpt-transcribe` fixed it: the
+ * code-switching fixture now returns "AWS وAzure وGoogle Cloud" intact. The list and
+ * the model do different jobs, and both are load-bearing.
  *
  * WHY IT IS A BARE LIST AND MUST STAY ONE. An earlier version wrapped these terms in a
  * framing sentence — "a conversation at the Devoteam stand at LEAP Riyadh…". The brand

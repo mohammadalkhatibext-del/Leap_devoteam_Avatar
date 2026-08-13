@@ -38,7 +38,7 @@ async function openaiTranscribe(audio, { contentType }) {
 
   const form = new FormData();
   form.append("file", new Blob([audio], { type: contentType }), `clip.${ext}`);
-  form.append("model", env("OPENAI_STT_MODEL") || "gpt-4o-transcribe");
+  form.append("model", env("OPENAI_STT_MODEL") || "gpt-transcribe");
   // Booth vocabulary, so "ديفوتيم" survives. See server/vocabulary.mjs for the
   // measurement and for why no `language` field accompanies it.
   form.append("prompt", asPrompt());
