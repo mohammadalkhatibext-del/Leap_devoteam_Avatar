@@ -89,20 +89,25 @@ export const DEFAULTS = {
   avatarId: "",
 
   /**
-   * Which engine turns the answer into speech: "elevenlabs" | "openai".
+   * Which engine turns the answer into speech: "edge" | "azure" | "elevenlabs" | "openai".
    *
-   * Default to the managed provider pair the admin UI expects on first load: the
-   * provider is selected first, then the voice styling is chosen.
+   * ElevenLabs, on measurement rather than taste. On one Arabic sentence, time to a
+   * finished clip: ElevenLabs Flash v2.5 ~290 ms, Turbo v2.5 ~280 ms, OpenAI
+   * gpt-4o-mini-tts ~3420 ms. Since the booth synthesises the FIRST sentence before
+   * the avatar can open its mouth, that difference is ~3 s of a visitor staring at a
+   * motionless face on every single question. edge-tts is also disqualified for LEAP
+   * on its own terms — undocumented endpoint. server/tts-engines.mjs holds the detail.
    */
   ttsEngine: "elevenlabs",
 
   /**
    * Which engine turns the visitor's speech into text: "deepgram" | "openai".
    *
-   * Default to the more reliable booth configuration until an operator saves a
-   * different choice in the admin UI.
+   * OpenAI: one request instead of Deepgram's two, and on a booth-length clip (~3 s)
+   * it returns in ~280 ms. Language falls out of the script of the transcript, which
+   * between Arabic and English cannot be ambiguous.
    */
-  sttEngine: "deepgram",
+  sttEngine: "openai",
 
   /**
    * Which Claude model writes the answer.
@@ -130,15 +135,20 @@ export const DEFAULTS = {
    * (see ELEVEN_VOICE_PAIRS in server/tts-engines.mjs): male is Mohammed Almansari in
    * Arabic and Sully in English, female is Abrar Sabbah and Jessa.
    *
-   * Default to the booth's shipped male configuration so the face and voice match on
-   * first load before any user settings are saved.
+   * **Female, because the avatar that actually ships is female.** ANAM_AVATAR_ID in
+   * .env is 278fec65…, which `GET /v1/avatars` names **Dania** — not the "Faisal -
+   * Cultural Guide" the comment beside it claimed for months. Faisal is a real avatar
+   * on the same account (bba96e80…) and switching to him is one dropdown in Settings,
+   * but this default has to describe the booth as configured. A woman's face speaking
+   * with a man's voice is the single most visible way this booth can be wrong: a
+   * visitor notices it before they hear a word of the answer.
    *
    * Change these two together or not at all.
    *
    * The two fields below still win when set, so an operator who wants a specific
    * voice is never boxed in by the toggle.
    */
-  voiceGender: "male",
+  voiceGender: "female",
 
   /**
    * ElevenLabs keeps its own pair, because its voice ids are nothing like the
@@ -160,8 +170,8 @@ export const DEFAULTS = {
    */
   elevenModel: "eleven_flash_v2_5",
 
-  /** OpenAI ships one voice for both languages; the booth default follows the male preset. */
-  openaiVoice: "ash",
+  /** OpenAI ships one voice for both languages; there is no per-language choice. */
+  openaiVoice: "alloy",
 
   /**
    * How long an answer should be, in words.

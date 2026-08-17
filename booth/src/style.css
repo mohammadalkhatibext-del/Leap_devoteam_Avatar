@@ -495,9 +495,7 @@ button.secondary {
   border: 1px solid var(--border);
 }
 button.secondary:hover:not(:disabled) {
-  background: var(--dv-poppy);
-  border-color: var(--dv-poppy);
-  color: #fff;
+  background: var(--surface-2);
 }
 
 .row {
