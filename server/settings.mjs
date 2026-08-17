@@ -143,13 +143,11 @@ export const DEFAULTS = {
   /**
    * ElevenLabs keeps its own pair, because its voice ids are nothing like the
    * Microsoft ones and a native Arabic voice plus a native English voice beats one
-   * multilingual voice stretched across both. Empty means "follow the voiceGender
-   * pair above, then ELEVENLABS_VOICE_AR / _EN from .env" — the same
-   * empty-until-chosen rule as the Anam avatar, so nothing here freezes a choice the
-   * operator has not made.
+   * multilingual voice stretched across both. These defaults correspond to the
+   * preferred male configuration: Mohammed Almansari for Arabic and English.
    */
-  elevenVoiceAr: "",
-  elevenVoiceEn: "",
+  elevenVoiceAr: "rPNcQ53R703tTmtue1AT",
+  elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
 
   /**
    * ElevenLabs model. Latency is a feature at a booth — the visitor is standing there.
@@ -271,19 +269,32 @@ function merge(base, saved) {
   return out;
 }
 
+function applyRuntimeDefaults(settings) {
+  const next = { ...DEFAULTS, ...settings };
+
+  if (!next.avatarProvider) next.avatarProvider = DEFAULTS.avatarProvider;
+  if (!next.ttsEngine) next.ttsEngine = DEFAULTS.ttsEngine;
+  if (!next.sttEngine) next.sttEngine = DEFAULTS.sttEngine;
+  if (!next.openaiVoice) next.openaiVoice = DEFAULTS.openaiVoice;
+  if (!next.elevenVoiceAr) next.elevenVoiceAr = DEFAULTS.elevenVoiceAr;
+  if (!next.elevenVoiceEn) next.elevenVoiceEn = DEFAULTS.elevenVoiceEn;
+
+  return next;
+}
+
 export async function getSettings() {
   if (cache) return cache;
   try {
-    cache = merge(DEFAULTS, JSON.parse(await readFile(FILE, "utf8")));
+    cache = applyRuntimeDefaults(merge(DEFAULTS, JSON.parse(await readFile(FILE, "utf8"))));
   } catch {
-    cache = { ...DEFAULTS }; // no file yet — first run
+    cache = applyRuntimeDefaults({ ...DEFAULTS }); // no file yet — first run
   }
   return cache;
 }
 
 /** Validate and persist a partial update; returns the full saved settings. */
 export async function saveSettings(patch) {
-  const next = merge(await getSettings(), patch);
+  const next = applyRuntimeDefaults(merge(await getSettings(), patch));
 
   // Clamp the two numbers an operator could set to something that breaks the booth.
   next.answerWords = Math.min(120, Math.max(10, Number(next.answerWords) || DEFAULTS.answerWords));

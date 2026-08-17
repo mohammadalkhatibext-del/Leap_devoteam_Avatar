@@ -138,7 +138,6 @@
       <!-- ---------------------------------------------------------- who -->
       <div class="card section">
         <h2>Avatar</h2>
-        <p class="lead" id="whoLead"></p>
 
         <div class="field">
           <label for="profileName">Name of this setup</label>
@@ -148,7 +147,11 @@
 
         <div class="field">
           <label>Avatar provider</label>
-          <div class="choices" id="providerChoices"></div>
+          <div class="choices" id="providerChoices">
+            <button type="button" data-provider="anam" aria-pressed="true">Anam</button>
+            <button type="button" data-provider="simli" aria-pressed="false">Simli</button>
+            <button type="button" data-provider="akool" aria-pressed="false">Akool</button>
+          </div>
           <button type="button" class="advanced-toggle" id="providerAdvancedToggle" aria-expanded="false">
             <span>Advanced Settings</span>
             <span class="chevron">▾</span>
@@ -161,7 +164,7 @@
             <div class="field" id="anamFields" hidden>
              <label for="avatarId">Avatar</label>
              <select id="avatarId"></select>
-             <p class="hint" id="avatarHint">Loading the avatars available on your Anam account…</p>
+             <p class="hint" id="avatarHint">Choose the Anam avatar configured for this stand.</p>
             </div>
 
             <div class="grid2" id="simliFields" hidden>
@@ -206,9 +209,8 @@
                  <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
                  <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
                </div>
-               <p class="hint" id="akoolSessionHint"></p>
+               <p class="hint" id="akoolSessionHint">Pick the session length that fits your booth traffic.</p>
              </div>
-
              <div class="field">
                <label class="toggle" for="releaseAvatarWhenIdle">
                  <input id="releaseAvatarWhenIdle" type="checkbox" />
@@ -229,10 +231,10 @@
                </p>
              </div>
 
-             <p class="hint" id="akoolHint"></p>
+             <p class="hint" id="akoolHint">Akool settings are kept in the booth configuration and only used when that provider is selected.</p>
             </div>
 
-            <p class="hint" id="voiceHint"></p>
+            <p class="hint" id="voiceHint">The avatar provider decides which voice and settings are active for the visitor experience.</p>
           </div>
         </div>
       </div>
@@ -247,8 +249,11 @@
 
         <div class="field">
           <label>Voice provider</label>
-          <div class="choices" id="ttsChoices"></div>
-          <p class="hint" id="ttsHint"></p>
+          <div class="choices" id="ttsChoices">
+            <button type="button" data-engine="elevenlabs" aria-pressed="true">ElevenLabs<small>ready</small></button>
+            <button type="button" data-engine="openai" aria-pressed="false">OpenAI<small>ready</small></button>
+          </div>
+          <p class="hint" id="ttsHint">A native voice per language. This is the default voice setup for the booth.</p>
         </div>
 
         <div class="field" id="ttsGenderFields">
@@ -290,7 +295,7 @@
                <select id="elevenModel"></select>
                <p class="hint">Compare model speed and tone before you save your choice.</p>
              </div>
-             <p class="hint" id="elevenHint"></p>
+             <p class="hint" id="elevenHint">A native voice per language. Generally the most natural Arabic voice in this setup.</p>
             </div>
 
             <div class="field" id="openaiVoiceFields" hidden>
@@ -329,8 +334,11 @@
 
         <div class="field">
           <label>Listening engine</label>
-          <div class="choices" id="sttChoices"></div>
-          <p class="hint" id="sttHint"></p>
+          <div class="choices" id="sttChoices">
+            <button type="button" data-engine="deepgram" aria-pressed="true">Deepgram<small>ready</small></button>
+            <button type="button" data-engine="openai" aria-pressed="false">OpenAI<small>ready</small></button>
+          </div>
+          <p class="hint" id="sttHint">Two language requests in parallel is the most reliable Arabic setup for this booth.</p>
         </div>
 
         <div class="field testlab">
@@ -367,7 +375,7 @@
             <button type="button" data-words="35">Normal<small>~25 seconds</small></button>
             <button type="button" data-words="55">Detailed<small>~39 seconds</small></button>
           </div>
-          <p class="hint" id="lengthHint"></p>
+          <p class="hint" id="lengthHint">Measured, not guessed: the Arabic voice speaks about two words per second.</p>
         </div>
 
         <div class="field">
