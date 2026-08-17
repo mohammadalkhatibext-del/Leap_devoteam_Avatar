@@ -251,6 +251,7 @@ export function boothApi({ log } = {}) {
         const data = boothAvatars("anam", body.data ?? []).map((a) => ({
           id: a.id,
           displayName: a.name,
+          gender: a.gender,
         }));
         json(res, 200, { data });
         return true;

@@ -39,6 +39,8 @@ let providers = [];
 let ttsEngines = [];
 let sttEngines = [];
 let elevenVoices = [];
+/** The booth's two faces per provider, with the gender each one is. */
+let boothAvatars = { anam: [], akool: [] };
 const DEFAULT_PROVIDER_ID = "anam";
 const DEFAULT_STT_ENGINE = "deepgram";
 const DEFAULT_SETTINGS = {
@@ -353,6 +355,7 @@ function applyProvider() {
   const simliFields = $("simliFields"); if (simliFields) simliFields.hidden = id !== "simli";
   const akoolFields = $("akoolFields"); if (akoolFields) akoolFields.hidden = id !== "akool";
   applyFraming();
+  applyCharacter();
 
   const usesOurVoice = p?.mode !== "text";
 
@@ -364,6 +367,81 @@ function applyProvider() {
   }
 
   if (ttsEngines.length) applyTtsEngine();
+}
+
+/** Which id field holds the character for a given renderer. */
+const characterSelectFor = (provider) =>
+  provider === "akool" ? "akoolAvatarId" : provider === "anam" ? "avatarId" : null;
+
+/**
+ * Label the two character buttons for the selected renderer and press the one that
+ * matches the id currently saved.
+ *
+ * Simli is left out on purpose: it has no pair of booth faces, only a face id typed
+ * in by hand, so the buttons would be lying about what they control.
+ */
+function applyCharacter() {
+  const provider = selected("providerChoices", "provider") || DEFAULT_PROVIDER_ID;
+  const field = $("characterField");
+  const list = boothAvatars[provider] ?? [];
+  if (field) field.hidden = !list.length;
+  if (!list.length) return;
+
+  const byGender = (g) => list.find((a) => a.gender === g);
+  const femaleName = $("characterFemaleName");
+  const maleName = $("characterMaleName");
+  if (femaleName) femaleName.textContent = byGender("female")?.name ?? "";
+  if (maleName) maleName.textContent = byGender("male")?.name ?? "";
+
+  // Press whichever button matches the saved id. An empty id means the booth is
+  // following .env, so neither is pressed rather than guessing one — the summary
+  // says "The booth default" in that state and a click is what pins it.
+  const selId = characterSelectFor(provider);
+  const current = selId ? $(selId)?.value : "";
+  const match = list.find((a) => a.id === current);
+  // No match means the booth is still following .env, so press neither button
+  // rather than implying a choice nobody made. select() presses nothing when the
+  // value matches no button.
+  select("characterChoices", "gender", match?.gender);
+
+  // The ".env" half of this hint stops being true the moment a character is picked,
+  // and it is the sentence an operator reads to decide whether they still need to.
+  // Left alone while the select shows the unusable-id warning, which matters more.
+  const hint = $("avatarHint");
+  const sel = selId ? $(selId) : null;
+  if (provider === "anam" && hint && sel && !sel.selectedOptions[0]?.textContent.startsWith("⚠")) {
+    hint.textContent = current
+      ? "The booth's 2 faces."
+      : "The booth's 2 faces. Currently following ANAM_AVATAR_ID from .env.";
+  }
+}
+
+/**
+ * Choosing a face also chooses the voice, because a visitor notices a mismatch
+ * between the two before they notice anything else on the stand. It is a default,
+ * not a lock: the voice buttons below still override it afterwards.
+ */
+function applyCharacterChoice(gender) {
+  const provider = selected("providerChoices", "provider") || DEFAULT_PROVIDER_ID;
+  const list = boothAvatars[provider] ?? [];
+  const pick = list.find((a) => a.gender === gender);
+  if (!pick) return;
+
+  const selId = characterSelectFor(provider);
+  const sel = selId ? $(selId) : null;
+  if (sel) sel.value = pick.id;
+
+  // Re-derive the pressed button and the hint from the id that was just set, so the
+  // ".env" note disappears the moment it stops being true.
+  applyCharacter();
+
+  // Akool speaks in its own voice, so following the face with our TTS would change a
+  // voice no visitor will hear and quietly undo the operator's own choice.
+  const p = providers.find((x) => x.id === provider);
+  if (p?.mode === "text") return;
+
+  select("ttsGenderChoices", "gender", gender);
+  applyTtsGender(gender);
 }
 
 /** Snap an arbitrary saved word count to the closest of the three presets. */
@@ -475,6 +553,7 @@ for (const groupId of [
   "akoolSessionChoices",
   "modelChoices",
   "fitChoices",
+  "characterChoices",
 ]) {
   // Guarded because this page is assembled from two layouts — a group that one of
   // them does not render must not take the whole script down on load.
@@ -493,6 +572,12 @@ for (const groupId of [
     }
     if (groupId === "ttsGenderChoices") {
       applyTtsGender(btn.dataset.gender);
+      renderPreview();
+      dirty();
+      return;
+    }
+    if (groupId === "characterChoices") {
+      applyCharacterChoice(btn.dataset.gender);
       renderPreview();
       dirty();
       return;
@@ -954,6 +1039,12 @@ async function boot() {
 
   voices = voicesRes.voices ?? [];
   providers = providersRes.providers ?? [];
+  // Both endpoints are already filtered to the booth's two faces and carry the gender
+  // of each, which is what lets the character buttons exist at all.
+  boothAvatars = {
+    anam: (avatarsRes.data ?? []).map((a) => ({ id: a.id, name: a.displayName, gender: a.gender })),
+    akool: akoolRes.avatars ?? [],
+  };
   ttsEngines = (ttsRes.engines ?? []).filter((e) => ["elevenlabs", "openai"].includes(e.id));
   sttEngines = sttRes.engines ?? [];
 

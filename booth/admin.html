@@ -65,6 +65,15 @@
       }
       .advanced-toggle .chevron { font-size: 1rem; line-height: 1; margin-left: auto; }
       .advanced-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
+      /* The advanced panel now holds two subjects — the provider's own fields and
+         when the avatar turns itself on and off — so the second one needs a heading
+         to divide them. */
+      .advanced-panel h3.sub {
+        font-size: var(--text-micro); font-weight: 700; text-transform: uppercase;
+        letter-spacing: .08em; color: var(--text-muted);
+        margin: 22px 0 2px; padding-top: 16px; border-top: 1px solid var(--border-soft);
+      }
+      .advanced-panel h3.sub + .hint { margin-top: 0; margin-bottom: 14px; }
       .toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
       .toggle input { width: auto; }
 
@@ -182,9 +191,31 @@
           <label>AVATAR PROVIDER</label>
           <div class="choices" id="providerChoices">
             <button type="button" data-provider="anam" aria-pressed="true">Anam</button>
-            <button type="button" data-provider="simli" aria-pressed="false">Simli</button>
             <button type="button" data-provider="akool" aria-pressed="false">Akool</button>
+            <button type="button" data-provider="simli" aria-pressed="false">Simli</button>
           </div>
+        </div>
+
+        <!-- The character picker in front of the id fields. Two people, so two
+             buttons; the names under them come from the selected provider, because
+             the same two characters exist on Anam and Akool under different ids. -->
+        <div class="field" id="characterField">
+          <label>CHARACTER</label>
+          <div class="choices" id="characterChoices">
+            <button type="button" data-gender="female">
+              Female<small id="characterFemaleName"></small>
+            </button>
+            <button type="button" data-gender="male">
+              Male<small id="characterMaleName"></small>
+            </button>
+          </div>
+          <p class="hint" id="characterHint">
+            Picking a character also switches the voice to match. You can still choose a
+            different voice below afterwards.
+          </p>
+        </div>
+
+        <div class="field">
           <button type="button" class="advanced-toggle" id="providerAdvancedToggle" aria-expanded="false">
             <span>Advanced Settings</span>
             <span class="chevron">▾</span>
@@ -247,6 +278,52 @@
             </div>
 
             <p class="hint" id="voiceHint">The avatar provider decides which voice and settings are active for the visitor experience.</p>
+
+            <!-- ------------------------------------------------- activation -->
+            <!-- Was its own card. It belongs to the avatar — when it appears, when
+                 it gives up, and how it sits in the frame — and none of it is a
+                 first-run decision, so it lives behind Advanced with the rest. -->
+            <h3 class="sub">TURNING THE AVATAR ON AND OFF</h3>
+            <p class="hint">Control when the avatar connects and when it disconnects.</p>
+
+            <div class="field">
+              <label class="toggle" for="requireTapToStart">
+                <input id="requireTapToStart" type="checkbox" />
+                <span>Wait for a visitor to touch the screen before connecting</span>
+              </label>
+              <p class="hint">Starts the avatar session when a visitor interacts with the booth.</p>
+            </div>
+
+            <div class="field">
+              <label for="idleDisconnectMinutes">
+                CLOSE THE SESSION AFTER THIS MANY MINUTES OF SILENCE
+              </label>
+              <input id="idleDisconnectMinutes" type="number" min="1" max="60" />
+              <p class="hint">Ends the avatar session after the selected period of inactivity.</p>
+            </div>
+
+            <div class="field">
+              <label>HOW THE AVATAR SITS ON SCREEN</label>
+              <div class="choices compact" id="fitChoices">
+                <button type="button" data-fit="cover">Fill the stage<small>crops the edges</small></button>
+                <button type="button" data-fit="contain">Fit the whole frame<small>bars at the edges</small></button>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <label for="stageZoom">Zoom <b id="stageZoomOut"></b></label>
+                  <input id="stageZoom" type="range" min="0.4" max="2" step="0.02" />
+                </div>
+                <div class="field">
+                  <label for="stageFocusY">Vertical anchor <b id="stageFocusYOut"></b></label>
+                  <input id="stageFocusY" type="range" min="0" max="100" step="1" />
+                </div>
+              </div>
+              <p class="hint" id="framingHint"></p>
+              <p class="hint">
+                Adjust how the avatar is positioned and scaled on screen. Saved separately
+                for each avatar provider.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -405,51 +482,6 @@
           <label for="idleResetMinutes">RESET CONVERSATION AFTER INACTIVITY</label>
           <input id="idleResetMinutes" type="number" min="1" max="60" />
           <p class="hint">After this period of inactivity, the conversation resets automatically for the next visitor.</p>
-        </div>
-      </div>
-
-      <!-- ----------------------------------------------------- activation -->
-      <div class="card section">
-        <h2>Turning the avatar on and off</h2>
-        <p class="lead">Control when the avatar connects and when it disconnects.</p>
-
-        <div class="field">
-          <label class="toggle" for="requireTapToStart">
-            <input id="requireTapToStart" type="checkbox" />
-            <span>Wait for a visitor to touch the screen before connecting</span>
-          </label>
-          <p class="hint">Starts the avatar session when a visitor interacts with the booth.</p>
-        </div>
-
-        <div class="field">
-          <label for="idleDisconnectMinutes">
-            Close the session after this many minutes of silence
-          </label>
-          <input id="idleDisconnectMinutes" type="number" min="1" max="60" />
-          <p class="hint">Ends the avatar session after the selected period of inactivity.</p>
-        </div>
-
-        <div class="field">
-          <label>How the avatar sits on screen</label>
-          <div class="choices compact" id="fitChoices">
-            <button type="button" data-fit="cover">Fill the stage<small>crops the edges</small></button>
-            <button type="button" data-fit="contain">Fit the whole frame<small>bars at the edges</small></button>
-          </div>
-          <div class="grid2">
-            <div class="field">
-              <label for="stageZoom">Zoom <b id="stageZoomOut"></b></label>
-              <input id="stageZoom" type="range" min="0.4" max="2" step="0.02" />
-            </div>
-            <div class="field">
-              <label for="stageFocusY">Vertical anchor <b id="stageFocusYOut"></b></label>
-              <input id="stageFocusY" type="range" min="0" max="100" step="1" />
-            </div>
-          </div>
-          <p class="hint" id="framingHint"></p>
-          <p class="hint">
-            Adjust how the avatar is positioned and scaled on screen. Saved separately
-            for each avatar provider.
-          </p>
         </div>
       </div>
 

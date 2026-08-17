@@ -123,12 +123,12 @@ async function akoolToken() {
  */
 export const BOOTH_AVATARS = {
   anam: [
-    { id: "278fec65-e75e-406b-a422-29c6233aba45", name: "Dalia" },
-    { id: "bba96e80-2946-4819-a356-73765fa5bb3c", name: "Faisal" },
+    { id: "278fec65-e75e-406b-a422-29c6233aba45", name: "Dalia", gender: "female" },
+    { id: "bba96e80-2946-4819-a356-73765fa5bb3c", name: "Faisal", gender: "male" },
   ],
   akool: [
-    { id: "kWte7SV6zSTmF07UZF_lW", name: "Dalia Akool" },
-    { id: "HTuWYZWa-faUiqwRqKIZg", name: "Faisal Akool" },
+    { id: "kWte7SV6zSTmF07UZF_lW", name: "Dalia Akool", gender: "female" },
+    { id: "HTuWYZWa-faUiqwRqKIZg", name: "Faisal Akool", gender: "male" },
   ],
 };
 
@@ -343,17 +343,9 @@ export const PROVIDERS = {
     optional: ["ANAM_AVATAR_ID"],
     createSession: anamSession,
   },
-  simli: {
-    id: "simli",
-    label: "Simli",
-    mode: "pcm",
-    sampleRate: 16000,
-    transport: "simli-sdk",
-    blurb: "Lip-syncs our audio too, but requires 16 kHz — the browser resamples, so it is the one renderer not hearing the fixture bit-for-bit.",
-    requires: ["SIMLI_API_KEY", "SIMLI_FACE_ID"],
-    optional: [],
-    createSession: simliSession,
-  },
+  // Key order is the order the picker shows them in — listProviders() maps over this
+  // object and the admin page builds its buttons from that list, so Akool sits second
+  // as the other renderer the booth actually uses, and Simli last.
   akool: {
     id: "akool",
     label: "Akool",
@@ -368,6 +360,17 @@ export const PROVIDERS = {
     // Only Akool has one. Anam and Simli stop costing when the stream ends, so there
     // is nothing for the booth to call and nothing to get wrong by not calling it.
     closeSession: closeAkoolSession,
+  },
+  simli: {
+    id: "simli",
+    label: "Simli",
+    mode: "pcm",
+    sampleRate: 16000,
+    transport: "simli-sdk",
+    blurb: "Lip-syncs our audio too, but requires 16 kHz — the browser resamples, so it is the one renderer not hearing the fixture bit-for-bit.",
+    requires: ["SIMLI_API_KEY", "SIMLI_FACE_ID"],
+    optional: [],
+    createSession: simliSession,
   },
 };
 
