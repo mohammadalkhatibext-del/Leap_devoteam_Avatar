@@ -142,8 +142,12 @@ export const BOOTH_AVATARS = {
  */
 export function boothAvatars(provider, fromVendor, idOf = (a) => a.id) {
   const allowed = BOOTH_AVATARS[provider] ?? [];
-  const present = new Set((fromVendor ?? []).map(idOf));
-  return allowed.filter((a) => present.has(a.id));
+  const byId = new Map((fromVendor ?? []).map((a) => [idOf(a), a]));
+  // The label and gender are ours; anything else the vendor knows about the avatar
+  // (Akool's bound voice_id) rides along so the picker can act on it.
+  return allowed
+    .filter((a) => byId.has(a.id))
+    .map((a) => ({ ...a, voiceId: byId.get(a.id)?.voiceId ?? null }));
 }
 
 /**
@@ -184,6 +188,11 @@ export async function listAkoolAvatars() {
     return rows.map((a) => ({
       id: a.avatar_id ?? a._id ?? a.id,
       name: a.name ?? a.avatar_id ?? a._id,
+      // Akool binds a voice to the avatar itself. Carrying it through lets the admin
+      // page send that voice explicitly when the character is chosen, instead of
+      // leaving voice_id empty and taking whatever the account defaults to. Not every
+      // avatar has one — Faisal_akool does not — so this is often undefined.
+      voiceId: a.voice_id ?? null,
     }));
   } catch {
     return [];

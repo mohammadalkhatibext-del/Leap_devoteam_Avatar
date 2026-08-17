@@ -431,15 +431,21 @@ function applyCharacterChoice(gender) {
   const sel = selId ? $(selId) : null;
   if (sel) sel.value = pick.id;
 
+  // Akool binds a voice to the avatar itself. Send that voice explicitly rather than
+  // leaving the field empty, which makes Akool fall back to an account default that
+  // has nothing to do with who is on screen. Only some avatars carry one, so an
+  // avatar without a bound voice clears the field back to that default rather than
+  // leaving the previous character's voice behind.
+  if (provider === "akool" && $("akoolVoiceId")) $("akoolVoiceId").value = pick.voiceId ?? "";
+
   // Re-derive the pressed button and the hint from the id that was just set, so the
   // ".env" note disappears the moment it stops being true.
   applyCharacter();
 
-  // Akool speaks in its own voice, so following the face with our TTS would change a
-  // voice no visitor will hear and quietly undo the operator's own choice.
-  const p = providers.find((x) => x.id === provider);
-  if (p?.mode === "text") return;
-
+  // Every renderer moves the voice gender with the face, Akool included. Akool speaks
+  // through its own voice rather than our TTS, so this does not change what a visitor
+  // hears there — but leaving the buttons behind made the page contradict itself, and
+  // the setting is the one that applies the moment the provider changes back.
   select("ttsGenderChoices", "gender", gender);
   applyTtsGender(gender);
 }

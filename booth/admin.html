@@ -97,27 +97,35 @@
          Label on the left, current value on the right, grouped in the same order
          as the cards below. Rows rather than a paragraph because this is read by
          scanning for one setting, not from the beginning. */
+      /* Two columns, because the five groups are short and stacking them made an
+         overview taller than the card it summarises.
+         Columns rather than a grid: grid aligns rows across tracks, which left a
+         one-row group padded out to the height of a four-row one beside it. Columns
+         just flow, so each group takes the height it needs. */
       .summary {
-        background: var(--surface-sunken); border-radius: var(--radius-button);
-        padding: 6px 16px 14px; font-size: var(--text-base);
+        column-count: 2; column-gap: 32px; font-size: var(--text-sm);
       }
-      .sum-group + .sum-group { margin-top: 6px; border-top: 1px solid var(--border-soft); }
+      @media (max-width: 700px) { .summary { column-count: 1; } }
+      .sum-group {
+        break-inside: avoid; -webkit-column-break-inside: avoid;
+        min-width: 0; padding: 7px 0 8px;
+      }
       .sum-group > h3 {
-        font-size: var(--text-micro); font-weight: 700; text-transform: uppercase;
-        letter-spacing: .08em; color: var(--text-muted); margin: 14px 0 6px;
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .09em; color: var(--text-muted); margin: 0 0 4px;
+        padding-bottom: 4px; border-bottom: 1px solid var(--border-soft);
       }
       .sum-group dl { margin: 0; }
       .sum-row {
-        display: flex; gap: 16px; align-items: baseline;
-        padding: 4px 0; line-height: 1.5;
+        display: flex; justify-content: space-between; gap: 14px;
+        align-items: baseline; padding: 2px 0; line-height: 1.4;
       }
-      .sum-row dt { flex: 0 0 46%; margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
-      /* The value is the part being looked for, so it carries the full-contrast
+      .sum-row dt { margin: 0; min-width: 0; color: var(--text-muted); }
+      /* The value is what someone is scanning for, so it keeps the full-contrast
          colour and the weight; the label beside it stays quiet. */
-      .sum-row dd { margin: 0; flex: 1; color: var(--text); font-weight: 600; }
-      @media (max-width: 560px) {
-        .sum-row { display: block; padding: 6px 0; }
-        .sum-row dt { margin-bottom: 1px; }
+      .sum-row dd {
+        margin: 0; min-width: 0; text-align: right;
+        color: var(--text); font-weight: 600;
       }
 
       /* --- test lab ------------------------------------------------------- */
