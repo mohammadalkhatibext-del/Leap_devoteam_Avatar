@@ -1,11 +1,19 @@
-import { anamAdapter } from "./adapters/anam.js";
-import { simliAdapter } from "./adapters/simli.js";
-import { akoolAdapter } from "./adapters/akool.js";
-
+/**
+ * One adapter per renderer, each loaded only if it is the one selected.
+ *
+ * Statically importing all three pulled every vendor SDK into the first bundle: 1.25 MB
+ * of JavaScript, of which two thirds was for renderers this booth was never going to
+ * use in this session. A kiosk downloads that before it can paint, and the show floor
+ * is the worst network it will ever see.
+ *
+ * Written as a map of `() => import(...)` rather than a computed specifier because the
+ * bundler has to see each literal path to split it — `import(\`./adapters/${id}.js\`)`
+ * would either bundle the whole directory or resolve to nothing at all.
+ */
 const ADAPTERS = {
-  anam: anamAdapter,
-  simli: simliAdapter,
-  akool: akoolAdapter,
+  anam: () => import("./adapters/anam.js").then((m) => m.anamAdapter),
+  simli: () => import("./adapters/simli.js").then((m) => m.simliAdapter),
+  akool: () => import("./adapters/akool.js").then((m) => m.akoolAdapter),
 };
 
 /**
@@ -36,9 +44,13 @@ export const avatar = {
     const session = await res.json();
     if (!res.ok) throw new Error(session.error || JSON.stringify(session));
 
-    const make = ADAPTERS[session.provider];
-    if (!make) throw new Error(`no client adapter for provider "${session.provider}"`);
+    const loadAdapter = ADAPTERS[session.provider];
+    if (!loadAdapter) throw new Error(`no client adapter for provider "${session.provider}"`);
 
+    // Fetched now, over a connection the page has already opened, while the session
+    // token is fresh. On a warm cache this is a no-op; on the first visit of the day it
+    // is one chunk instead of three.
+    const make = await loadAdapter();
     this.impl = make();
     this.provider = session.provider;
     this.mode = session.mode;
@@ -47,6 +59,17 @@ export const avatar = {
     this.sessionId = session.sessionId ?? null;
 
     ctx.log(`${session.label}: ${session.mode} mode${session.sampleRate ? ` @ ${session.sampleRate} Hz` : ""}`);
+
+    // Announce the provider BEFORE handing off to the adapter, not after.
+    //
+    // Which vendor is on screen decides how the stage frames the video, and Simli's
+    // `start()` does not reliably resolve — it brings up a painting video and then
+    // leaves its promise pending. Anything that waited for the line below therefore
+    // never ran for Simli, which is precisely why its avatar sat at the wrong crop
+    // while Anam's was fine. The provider is known here and nothing about it depends
+    // on the connection succeeding.
+    ctx.onProvider?.(session.provider);
+
     await this.impl.connect(videoElementId, session, ctx);
   },
 

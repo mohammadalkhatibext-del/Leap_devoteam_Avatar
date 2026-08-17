@@ -5,481 +5,100 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const BOOTH = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(BOOTH);
 
-try {
-  process.loadEnvFile(path.join(ROOT, ".env"));
-} catch {}
-
 // `import()` of an absolute path is a URL, and on Windows "C:\..." parses as a
 // protocol — so these must be converted to file:// URLs rather than passed raw.
 const load = (...seg) => import(pathToFileURL(path.join(ROOT, ...seg)).href);
 
-const { ask } = await load("server", "claude.mjs");
-const { getSettings, saveSettings, resetSettings, DEFAULTS } = await load(
-  "server",
-  "settings.mjs",
-);
-const { createSession, closeSession, listProviders, listAkoolAvatars } = await load(
-  "server",
-  "providers.mjs",
-);
-const { ensureTts, prewarmFillers, filler, speak, SpeechQueue, SAMPLE_RATE, toWav } = await load(
-  "server",
-  "tts.mjs",
-);
-const {
-  listTtsEngines,
-  voiceFor,
-  modelFor,
-  listElevenVoices,
-  TTS_ENGINES,
-  OPENAI_VOICES,
-  ELEVEN_MODELS,
-} = await load("server", "tts-engines.mjs");
-const { transcribe, transcribeAll, listSttEngines } = await load("server", "stt-engines.mjs");
+// Same loader the production server uses, so a shadowed key is reported in dev too —
+// dev is where a stray `$env:…` gets typed in the first place.
+const { loadEnvAndReport } = await load("server", "env.mjs");
+loadEnvAndReport(path.join(ROOT, ".env"));
 
-const TTS_PORT = Number(process.env.TTS_PORT || 8765);
-
-const json = (res, code, body) => {
-  res.statusCode = code;
-  // Arabic transcripts and answers travel through here, so state the charset rather
-  // than leaving it to the client's default.
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(body));
-};
-
-const readBody = (req) =>
-  new Promise((resolve) => {
-    let raw = "";
-    req.on("data", (c) => (raw += c));
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(raw || "{}"));
-      } catch {
-        resolve({});
-      }
-    });
-  });
-
-const readRaw = (req) =>
-  new Promise((resolve) => {
-    const parts = [];
-    req.on("data", (c) => parts.push(c));
-    req.on("end", () => resolve(Buffer.concat(parts)));
-  });
+const { boothApi, startTtsSupervisor, SAMPLE_RATE } = await load("server", "api.mjs");
 
 /**
- * Per-visitor conversation state, in memory.
+ * Mount the booth API on the dev server.
  *
- * A booth session is a person standing at a screen for two minutes; when they walk
- * away the conversation is over and worthless. Nothing here deserves a database —
- * and keeping it in memory means a restart wipes visitor questions, which is the
- * privacy-correct default rather than an oversight.
+ * Everything this plugin used to contain now lives in server/api.mjs, so that the
+ * production server can run the identical code — see the header there. What is left is
+ * genuinely Vite-shaped: adapt Vite's logger, and fall through to Vite's own
+ * middleware for anything that is not an API call.
  */
-const sessions = new Map();
-const historyFor = (sid) => sessions.get(sid) ?? [];
-
-/**
- * Render the filler clips for whichever engine is currently selected.
- *
- * The Microsoft engines take one voice per language; the multilingual ones take one
- * voice for both, so `voiceFor` is asked per language rather than reading the two
- * settings fields directly — otherwise picking ElevenLabs would prewarm fillers in
- * the *edge* voice and the visitor would hear the engine change mid-answer.
- */
-async function warmFillers(settings) {
-  const engine = settings.ttsEngine;
-  return prewarmFillers(
-    { ar: voiceFor(settings, engine, "ar"), en: voiceFor(settings, engine, "en") },
-    engine,
-    modelFor(settings, engine),
-  );
-}
-
-function boothApi() {
+function boothApiPlugin() {
   return {
     name: "booth-api",
     async configureServer(server) {
-      const info = (m) => server.config.logger.info(`  ${m}`);
+      const log = {
+        info: (m) => server.config.logger.info(`  ${m}`),
+        warn: (m) => server.config.logger.warn(`  ${m}`),
+        error: (m) => server.config.logger.error(`  ${m}`),
+      };
 
       /**
        * Last line of defence for an unattended kiosk.
        *
        * A booth runs for three days with nobody watching the terminal. One stray
-       * rejected promise anywhere in this file would otherwise take the whole server
-       * down and leave a dead screen on the stand — which is exactly what happened
-       * when the TTS sidecar died mid-answer. Log it and keep serving.
+       * rejected promise anywhere would otherwise take the whole server down and
+       * leave a dead screen on the stand — which is exactly what happened when the
+       * TTS sidecar died mid-answer. Log it and keep serving.
        */
       process.on("unhandledRejection", (err) => {
-        server.config.logger.error(`  unhandled rejection (kept running): ${err?.message ?? err}`);
+        log.error(`unhandled rejection (kept running): ${err?.message ?? err}`);
       });
 
-      // Start the TTS sidecar and render the filler clips before the first visitor,
-      // so nobody pays that cost standing at the booth.
-      const startTts = () =>
-        ensureTts({ log: info })
-          .then(async () => warmFillers(await getSettings()))
-          .then((n) => info(`TTS ready — ${n} filler clips warm`))
-          .catch((err) => server.config.logger.error(`  TTS unavailable: ${err.message}`));
+      startTtsSupervisor({ log });
 
-      startTts();
-
-      // The sidecar is a separate process and can die during an event. Nobody is
-      // watching, so bring it back rather than waiting for someone to notice the
-      // avatar has gone quiet.
-      setInterval(async () => {
-        try {
-          const r = await fetch(`http://127.0.0.1:${TTS_PORT}/health`, {
-            signal: AbortSignal.timeout(1500),
-          });
-          if (r.ok) return;
-        } catch {
-          /* fall through to restart */
-        }
-        server.config.logger.warn("  TTS sidecar not responding — restarting it");
-        startTts();
-      }, 20_000).unref?.();
-
+      const handle = boothApi({ log });
       server.middlewares.use(async (req, res, next) => {
-        const url = new URL(req.url, "http://localhost");
-
-        try {
-          // ---- avatar: start a session with whichever renderer is selected ----
-          // One endpoint for all three vendors. The browser is told the `mode` so it
-          // knows whether to push PCM (Anam, Simli) or send text (Akool).
-          if (url.pathname === "/api/avatar/session" && req.method === "POST") {
-            try {
-              return json(res, 200, await createSession(await getSettings()));
-            } catch (err) {
-              server.config.logger.error(`  avatar session failed: ${err.message}`);
-              return json(res, 502, { error: err.message });
-            }
-          }
-
-          // ---- avatar: end a session that bills while it is open --------------
-          // Distinct from the browser dropping the WebRTC room, which is the cheap
-          // half: for Akool the room is the picture and the *session* is the meter.
-          // Always answers 200 — this is called from teardown paths, including a
-          // sendBeacon from a page that is already going away, and a failed close
-          // must not surface as a booth error. It is logged loudly instead, because
-          // a close that quietly fails is a bill nobody sees until the invoice.
-          if (url.pathname === "/api/avatar/close" && req.method === "POST") {
-            const { provider, sessionId } = await readBody(req);
-            const result = await closeSession(provider, sessionId);
-            if (result.closed) {
-              server.config.logger.info(`  avatar session closed: ${result.sessionId}`);
-            } else if (!result.skipped) {
-              // A session that would not close is money still burning, and the one
-              // line an operator needs to see in a wall of dev-server output.
-              server.config.logger.error(`  avatar session NOT closed — STILL BILLING: ${result.reason}`);
-            }
-            return json(res, 200, result);
-          }
-
-          // Which renderers this machine can actually use, for the admin picker.
-          if (url.pathname === "/api/avatar/providers") {
-            return json(res, 200, { providers: listProviders() });
-          }
-
-          // ---- settings: what the operator can change ------------------------
-          if (url.pathname === "/api/settings") {
-            if (req.method === "GET") return json(res, 200, await getSettings());
-            if (req.method === "POST") {
-              const saved = await saveSettings(await readBody(req));
-              // Voices may have changed; re-render the fillers so the next visitor
-              // hears the new voice rather than a cached clip of the old one.
-              warmFillers(saved).catch(() => {});
-              return json(res, 200, saved);
-            }
-          }
-
-          if (url.pathname === "/api/settings/reset" && req.method === "POST") {
-            const saved = await resetSettings();
-            warmFillers(saved).catch(() => {});
-            return json(res, 200, saved);
-          }
-
-          if (url.pathname === "/api/settings/defaults") {
-            return json(res, 200, DEFAULTS);
-          }
-
-          // ---- pickers for the admin page ------------------------------------
-          if (url.pathname === "/api/avatars") {
-            const key = process.env.ANAM_API_KEY;
-            if (!key) return json(res, 200, { data: [] });
-            const r = await fetch("https://api.anam.ai/v1/avatars", {
-              headers: { Authorization: `Bearer ${key}` },
-            });
-            const body = await r.json().catch(() => ({}));
-            return json(res, 200, { data: body.data ?? [] });
-          }
-
-          if (url.pathname === "/api/voices") {
-            try {
-              const r = await fetch(`http://127.0.0.1:${TTS_PORT}/voices`);
-              return json(res, 200, await r.json());
-            } catch {
-              return json(res, 200, { voices: [] }); // sidecar down — admin still loads
-            }
-          }
-
-          // ---- speech to text -------------------------------------------------
-          // The browser posts the recorded clip; the Deepgram key never leaves here.
-          if (url.pathname === "/api/stt" && req.method === "POST") {
-            const audio = await readRaw(req);
-            if (!audio.length) return json(res, 400, { error: "empty audio" });
-            const settings = await getSettings();
-            try {
-              return json(
-                res,
-                200,
-                await transcribe(audio, {
-                  engine: settings.sttEngine,
-                  contentType: req.headers["content-type"] || "audio/webm",
-                }),
-              );
-            } catch (err) {
-              return json(res, 502, { error: err.message });
-            }
-          }
-
-          // ---- engine pickers + the settings-page test lab ---------------------
-          // Which engines this machine can actually use, so the picker states
-          // "not configured" up front rather than letting it be discovered at a booth.
-          if (url.pathname === "/api/tts/engines") {
-            return json(res, 200, {
-              engines: listTtsEngines(),
-              openaiVoices: OPENAI_VOICES,
-              elevenModels: ELEVEN_MODELS,
-            });
-          }
-
-          if (url.pathname === "/api/stt/engines") {
-            return json(res, 200, { engines: listSttEngines() });
-          }
-
-          if (url.pathname === "/api/akool/avatars") {
-            try {
-              return json(res, 200, { avatars: await listAkoolAvatars() });
-            } catch {
-              return json(res, 200, { avatars: [] }); // admin page still loads
-            }
-          }
-
-          if (url.pathname === "/api/tts/eleven-voices") {
-            try {
-              return json(res, 200, { voices: await listElevenVoices() });
-            } catch {
-              return json(res, 200, { voices: [] }); // admin page still loads
-            }
-          }
-
-          /**
-           * Synthesise one line on every configured engine and hand back playable WAVs.
-           *
-           * The whole point is that the text is identical across engines — the same
-           * controlled-experiment discipline Phase 0 used for renderers, where one
-           * fixture set was rendered once and fed to every vendor. Anything that
-           * varied the input would make the comparison worthless.
-           *
-           * WAV rather than raw PCM because this is the one consumer that is a plain
-           * <audio> element rather than the booth's Web Audio pipeline; a RIFF header
-           * costs 44 bytes and saves the admin page from owning a decoder.
-           */
-          if (url.pathname === "/api/tts/compare" && req.method === "POST") {
-            const { text, language = "ar", engines, overrides } = await readBody(req);
-            if (!text?.trim()) return json(res, 400, { error: "text is required" });
-
-            /**
-             * Test what the operator is about to save, not what is already saved.
-             *
-             * The page says "press Save to make this live", so the lab has to run on
-             * the *unsaved* form state — otherwise picking a new voice and pressing
-             * Compare silently synthesises the old one, and the operator debugs a
-             * result that came from a voice they had already replaced on screen.
-             * Only the voice fields are accepted; nothing here can change the booth.
-             */
-            const saved = await getSettings();
-            const settings = {
-              ...saved,
-              ...Object.fromEntries(
-                ["voiceAr", "voiceEn", "elevenVoiceAr", "elevenVoiceEn", "elevenModel", "openaiVoice"]
-                  .filter((k) => typeof overrides?.[k] === "string")
-                  .map((k) => [k, overrides[k]]),
-              ),
-            };
-            const wanted = Array.isArray(engines) && engines.length
-              ? engines
-              : listTtsEngines().filter((e) => e.configured).map((e) => e.id);
-
-            const results = await Promise.all(
-              wanted.map(async (id) => {
-                const label = TTS_ENGINES[id]?.label ?? id;
-                const voice = voiceFor(settings, id, language);
-                const model = modelFor(settings, id);
-                const startedAt = Date.now();
-                try {
-                  const pcm = await speak(text, { engine: id, voice, language, model });
-                  return {
-                    engine: id,
-                    label,
-                    ok: true,
-                    voice,
-                    ms: Date.now() - startedAt,
-                    seconds: +(pcm.length / 2 / SAMPLE_RATE).toFixed(1),
-                    chars: text.length,
-                    wav: toWav(pcm, SAMPLE_RATE).toString("base64"),
-                  };
-                } catch (err) {
-                  // One failing engine must not sink the comparison — "ElevenLabs is
-                  // out of characters" is itself a result the operator needs to see.
-                  return { engine: id, label, ok: false, voice, error: err.message };
-                }
-              }),
-            );
-            return json(res, 200, { results });
-          }
-
-          /** The same idea for hearing: one clip, every configured STT engine. */
-          if (url.pathname === "/api/stt/compare" && req.method === "POST") {
-            const audio = await readRaw(req);
-            if (!audio.length) return json(res, 400, { error: "empty audio" });
-            return json(res, 200, {
-              results: await transcribeAll(audio, {
-                contentType: req.headers["content-type"] || "audio/webm",
-              }),
-            });
-          }
-
-          // ---- reset a visitor's conversation --------------------------------
-          if (url.pathname === "/api/reset" && req.method === "POST") {
-            const { sessionId } = await readBody(req);
-            sessions.delete(sessionId);
-            return json(res, 200, { ok: true });
-          }
-
-          // ---- ask: stream sentences + their audio as they are produced ------
-          if (url.pathname === "/api/ask") {
-            const question = url.searchParams.get("q")?.trim();
-            const sid = url.searchParams.get("sid") || "default";
-            const defaultLanguage = url.searchParams.get("lang") === "en" ? "en" : "ar";
-            const spoken = url.searchParams.get("spoken");
-            const spokenLanguage = spoken === "ar" || spoken === "en" ? spoken : null;
-            if (!question) return json(res, 400, { error: "q is required" });
-
-            const settings = await getSettings();
-            const answerLanguage = spokenLanguage || defaultLanguage;
-            const ttsEngine = settings.ttsEngine;
-            const voice = voiceFor(settings, ttsEngine, answerLanguage);
-            const ttsModel = modelFor(settings, ttsEngine);
-
-            res.writeHead(200, {
-              "content-type": "text/event-stream; charset=utf-8",
-              "cache-control": "no-cache",
-              connection: "keep-alive",
-            });
-            const send = (event, data) =>
-              res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-
-            const t0 = Date.now();
-
-            // Speak an acknowledgement immediately. Claude needs ~2 s and the first
-            // sentence another ~1 s to synthesise; without this the avatar stands
-            // frozen for three seconds, which visitors read as a crash rather than
-            // as thinking.
-            const ack = filler({ language: answerLanguage, voice, engine: ttsEngine, model: ttsModel });
-            if (ack) {
-              send("audio", {
-                index: -1,
-                text: ack.text,
-                filler: true,
-                pcm: ack.pcm.toString("base64"),
-              });
-            }
-
-            const queue = new SpeechQueue(
-              (pcm, { index, text }) =>
-                send("audio", { index, text, pcm: pcm.toString("base64") }),
-              { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
-            );
-
-            try {
-              const result = await ask(question, {
-                history: historyFor(sid),
-                defaultLanguage,
-                spokenLanguage,
-                onSentence: (s) => {
-                  send("sentence", { text: s });
-                  queue.push(s);
-                },
-              });
-              await queue.drain();
-
-              // Keep a degraded answer out of history. If it goes in, the model reads
-              // its own English as precedent and every later answer in this visitor's
-              // conversation degrades too — one slip becomes a ruined session.
-              if (result.leakedSource) {
-                server.config.logger.warn(
-                  `  answer read source text aloud — dropped from history: ${result.answer.slice(0, 90)}`,
-                );
-              } else {
-                sessions.set(sid, [
-                  ...historyFor(sid),
-                  { role: "user", content: question },
-                  { role: "assistant", content: result.answer },
-                ]);
-              }
-
-              send("done", {
-                answer: result.answer,
-                citations: result.citations,
-                grounded: result.grounded,
-                leakedSource: result.leakedSource,
-                language: answerLanguage,
-                timing: { ...result.timing, wallMs: Date.now() - t0 },
-                usage: result.usage,
-              });
-            } catch (err) {
-              server.config.logger.error(`  ask failed: ${err.message}`);
-
-              // The operator's fallback line, spoken in the visitor's language, so a
-              // backend failure still looks like a person saying sorry rather than a
-              // frozen face. See STRATEGY.md §5.
-              const fb = settings.fallback;
-              if (fb?.enabled) {
-                const text = answerLanguage === "en" ? fb.messageEn : fb.messageAr;
-                send("sentence", { text });
-                if (fb.mode === "speak") {
-                  try {
-                    const q2 = new SpeechQueue(
-                      (pcm, meta) => send("audio", { ...meta, pcm: pcm.toString("base64") }),
-                      { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
-                    );
-                    q2.push(text);
-                    await q2.drain();
-                  } catch {
-                    /* audio itself is down — the text above is all we can offer */
-                  }
-                }
-              }
-              send("failed", { error: err.message, fallback: fb?.enabled ?? false });
-            }
-            return res.end();
-          }
-        } catch (err) {
-          return json(res, 500, { error: String(err?.message ?? err) });
-        }
-
+        if (await handle(req, res)) return;
         next();
       });
     },
   };
 }
 
+/**
+ * Work around a case bug in simli-client@3.0.2 that only exists on Linux.
+ *
+ * Its `dist/index.js` does `require("./Client")`, but the file it ships is
+ * `dist/client.js` — lowercase. Windows and macOS have case-insensitive filesystems and
+ * resolve it happily, so the build passes on every developer machine here. Linux does
+ * not, and the build dies with:
+ *
+ *   Could not resolve "./Client" from "./Client?commonjs-external"
+ *
+ * Which is to say: this repo could not be built in a container or on any Linux host at
+ * all, and nothing revealed that until it was containerised. Worth keeping in mind
+ * before removing the Docker setup as "just for testing" — it is also the only thing
+ * that compiles the booth the way a cloud host would.
+ *
+ * Deliberately narrow: one package, one specifier. A broad case-insensitive resolver
+ * would paper over the same class of bug in our own imports, where it is a real defect
+ * that should fail loudly. Remove this once simli-client ships a fixed dist.
+ */
+function fixSimliClientCasing() {
+  return {
+    name: "simli-client-casing",
+    // Before @rollup/plugin-commonjs gets to it — by the time it appears as
+    // "./Client?commonjs-external" the resolution has already failed.
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source.split("?")[0] !== "./Client") return null;
+      if (!importer || !importer.replace(/\\/g, "/").includes("/simli-client/")) return null;
+      return path.join(path.dirname(importer), "client.js");
+    },
+  };
+}
+
 export default defineConfig({
   root: BOOTH,
-  plugins: [boothApi()],
+  plugins: [fixSimliClientCasing(), boothApiPlugin()],
   define: { __SAMPLE_RATE__: SAMPLE_RATE },
   build: {
+    // Written outside booth/ so the production server can serve a directory that is
+    // not also the Vite root — and so a stray `dist` never gets picked up as a page.
+    outDir: path.join(ROOT, "dist"),
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         booth: path.join(BOOTH, "index.html"),
