@@ -84,11 +84,32 @@
       .status.ok { color: var(--success); }
       .status.err { color: var(--critical-icon); font-weight: 600; }
 
-      .preview {
+      /* --- current setup --------------------------------------------------
+         Label on the left, current value on the right, grouped in the same order
+         as the cards below. Rows rather than a paragraph because this is read by
+         scanning for one setting, not from the beginning. */
+      .summary {
         background: var(--surface-sunken); border-radius: var(--radius-button);
-        padding: 14px 16px; font-size: var(--text-base); line-height: 1.6; color: var(--text-muted);
+        padding: 6px 16px 14px; font-size: var(--text-base);
       }
-      .preview b { color: var(--text); font-weight: 600; }
+      .sum-group + .sum-group { margin-top: 6px; border-top: 1px solid var(--border-soft); }
+      .sum-group > h3 {
+        font-size: var(--text-micro); font-weight: 700; text-transform: uppercase;
+        letter-spacing: .08em; color: var(--text-muted); margin: 14px 0 6px;
+      }
+      .sum-group dl { margin: 0; }
+      .sum-row {
+        display: flex; gap: 16px; align-items: baseline;
+        padding: 4px 0; line-height: 1.5;
+      }
+      .sum-row dt { flex: 0 0 46%; margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+      /* The value is the part being looked for, so it carries the full-contrast
+         colour and the weight; the label beside it stays quiet. */
+      .sum-row dd { margin: 0; flex: 1; color: var(--text); font-weight: 600; }
+      @media (max-width: 560px) {
+        .sum-row { display: block; padding: 6px 0; }
+        .sum-row dt { margin-bottom: 1px; }
+      }
 
       /* --- test lab ------------------------------------------------------- */
       .testlab {
@@ -134,6 +155,18 @@
         <button class="chip" id="themeBtn">Theme</button>
         <a class="chip" href="/">← Back to booth</a>
       </header>
+
+      <!-- -------------------------------------------------------- summary -->
+      <!-- First on the page on purpose: someone opening this for the first time
+           should be able to read what the booth is set to before they change any
+           of it. Rows are filled by renderPreview() and follow the same order as
+           the cards below, so "the one about the voice" is in the same place in
+           both. -->
+      <div class="card section" id="summaryCard">
+        <h2>Current Setup</h2>
+        <p class="lead">What the booth is set to right now.</p>
+        <div class="summary" id="preview"></div>
+      </div>
 
       <!-- ---------------------------------------------------------- who -->
       <div class="card section">
@@ -490,12 +523,6 @@
 
           <p class="hint">Keep the message brief and direct the visitor to a staff member.</p>
         </div>
-      </div>
-
-      <!-- -------------------------------------------------------- summary -->
-      <div class="card section">
-        <h2>Current Setup</h2>
-        <div class="preview" id="preview"></div>
       </div>
 
       <div class="savebar">

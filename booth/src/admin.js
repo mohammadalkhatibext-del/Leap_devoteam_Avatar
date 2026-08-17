@@ -568,55 +568,93 @@ function renderPreview() {
   const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
   const providerName = p?.label ?? "Anam";
 
-  const providerLine = av
-    ? `Visitors meet <b>${escape(av)}</b> via <b>${escape(providerName)}</b>.`
-    : `Visitors meet the <b>configured avatar</b> via <b>${escape(providerName)}</b>.`;
-
-  // What the operator needs from this line is which voice a visitor will actually
-  // hear. The gender buttons are the control on this page and read() maps them
-  // straight onto the ElevenLabs pair / OpenAI voice, so resolve the name from the
-  // selected gender rather than from the override fields — those are always filled in
-  // now, and echoing a raw voice id back would tell the operator nothing.
-  let voiceLine = `Voice is provided by <b>${escape(tts?.label ?? s.ttsEngine)}</b>.`;
+  // Which voice a visitor will actually hear. The gender buttons are the control on
+  // this page and read() maps them straight onto the ElevenLabs pair / OpenAI voice,
+  // so resolve the name from the selected gender rather than from the override fields
+  // — those are always filled in now, and a raw voice id tells an operator nothing.
+  const gender = selected("ttsGenderChoices", "gender") || "male";
+  let voiceRows = [["Provided by", tts?.label ?? s.ttsEngine]];
   if (p?.mode === "text") {
-    voiceLine = `Voice is provided by <b>${escape(providerName)}</b> and the external TTS engine is bypassed.`;
+    // Akool speaks with its own voice, so the TTS card is not in play at all. Saying
+    // so here stops an operator from tuning a voice the visitor will never hear.
+    voiceRows = [
+      ["Provided by", `${providerName} — it speaks in its own voice`],
+      ["Voice settings below", "Not used while this avatar is selected"],
+    ];
   } else if (tts?.id === "elevenlabs") {
-    const gender = selected("ttsGenderChoices", "gender") || "male";
     const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
-    voiceLine = `Voice is provided by <b>ElevenLabs</b> using <b>${escape(names.ar)}</b> for Arabic and <b>${escape(names.en)}</b> for English.`;
+    voiceRows = [
+      ["Provided by", "ElevenLabs"],
+      ["Arabic voice", names.ar],
+      ["English voice", names.en],
+    ];
   } else if (tts?.id === "openai") {
-    const gender = selected("ttsGenderChoices", "gender") || "male";
-    const voiceName = gender === "female" ? "Nova" : "Ash";
-    voiceLine = `Voice is provided by <b>OpenAI</b> using <b>${escape(voiceName)}</b> for Arabic and English.`;
+    voiceRows = [
+      ["Provided by", "OpenAI"],
+      ["Voice", `${gender === "female" ? "Nova" : "Ash"} — used for both languages`],
+    ];
   } else if (tts?.voiceMode === "microsoft") {
-    voiceLine =
-      `Voice is provided by <b>${escape(tts.label ?? "Microsoft")}</b> using ` +
-      `<b>${escape(shortVoice(s.voiceAr))}</b> for Arabic and <b>${escape(shortVoice(s.voiceEn))}</b> for English.`;
+    voiceRows = [
+      ["Provided by", tts.label ?? "Microsoft"],
+      ["Arabic voice", shortVoice(s.voiceAr)],
+      ["English voice", shortVoice(s.voiceEn)],
+    ];
   }
+
+  const facts = s.extraKnowledge.trim() ? s.extraKnowledge.trim().split("\n").filter(Boolean).length : 0;
+  const minutes = (n) => `${n} ${Number(n) === 1 ? "minute" : "minutes"} of silence`;
+
+  // The model buttons carry their own plain-English subtitle ("best quality",
+  // "fastest"). Read it back rather than restating it here, so the summary cannot
+  // drift from the control, and never show the raw model id.
+  const modelBtn = $("modelChoices")?.querySelector('[aria-pressed="true"]');
+  const modelName = modelBtn?.firstChild?.textContent?.trim();
+  const modelNote = modelBtn?.querySelector("small")?.textContent?.split("·").pop()?.trim();
+
+  const groups = [
+    ["Avatar", [
+      ["Character", av || "The booth default"],
+      ["Shown by", providerName],
+      ["Starts", s.requireTapToStart
+        ? "When a visitor touches the screen"
+        : "As soon as the booth opens"],
+      ["Turns itself off after", minutes(s.idleDisconnectMinutes)],
+    ]],
+    ["Voice", voiceRows],
+    ["Listening", [
+      ["Understands speech using", stt?.label ?? s.sttEngine],
+    ]],
+    ["How it talks", [
+      ["Answer length", `About ${seconds} seconds`],
+      ["Answer speed", modelName ? `${modelName}${modelNote ? ` — ${modelNote}` : ""}` : "—"],
+      ["Greeting", s.greetFirstAnswer ? "Greets each visitor once" : "No greeting"],
+      ["Conversation resets after", minutes(s.idleResetMinutes)],
+      ...(facts ? [["Extra facts added", `${facts}`]] : []),
+    ]],
+    ["If an answer fails", [
+      ["What the booth does", s.fallback.enabled
+        ? (s.fallback.mode === "speak"
+            ? "Says a short apology out loud"
+            : "Shows a short apology on screen")
+        : "Nothing — the screen just waits"],
+    ]],
+  ];
 
   const preview = $("preview");
   if (preview) {
-    preview.innerHTML = `
-      ${providerLine}
-      ${voiceLine}
-      It listens with <b>${escape(stt?.label ?? s.sttEngine)}</b>.
-      Answers run about <b>${seconds} seconds</b>, and it
-      ${s.greetFirstAnswer ? "greets each visitor once" : "skips greetings"}.
-      ${
-        s.requireTapToStart
-          ? `The avatar stays off until someone touches the screen, and closes itself again after
-             <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
-          : `<b>The avatar connects on load and stays connected</b>, closing only after
-             <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
-      }
-      The conversation clears itself after <b>${s.idleResetMinutes} minutes</b> of silence.
-      ${
-        s.fallback.enabled
-          ? `If an answer fails it ${s.fallback.mode === "speak" ? "says the fallback out loud" : "shows the fallback as a subtitle"}.`
-          : `<b>If an answer fails it says nothing</b> — the screen will just sit there.`
-      }
-      ${s.extraKnowledge.trim() ? `It also knows <b>${s.extraKnowledge.trim().split("\n").filter(Boolean).length} extra fact(s)</b> you added.` : ""}
-    `;
+    preview.innerHTML = groups
+      .map(([title, rows]) => `
+        <section class="sum-group">
+          <h3>${escape(title)}</h3>
+          <dl>
+            ${rows.map(([k, v]) => `
+              <div class="sum-row">
+                <dt>${escape(k)}</dt>
+                <dd>${escape(v ?? "—")}</dd>
+              </div>`).join("")}
+          </dl>
+        </section>`)
+      .join("");
   }
 }
 
