@@ -68,14 +68,12 @@ export const DEFAULTS = {
   avatarId: "",
 
   /**
-   * Which engine turns the answer into speech: "edge" | "azure" | "elevenlabs" | "openai".
+   * Which engine turns the answer into speech: "elevenlabs" | "openai".
    *
-   * Defaults to edge because it is the only one that needs no key at all — but it
-   * reaches Microsoft's voices through an undocumented endpoint and must not run at
-   * LEAP. Azure serves the identical voice catalogue legitimately, so moving to it
-   * changes nothing a visitor hears. server/tts-engines.mjs holds the detail.
+   * The booth default is the managed provider pair that matches the operator flow on
+   * the admin page: the provider is selected first, then the voice styling is chosen.
    */
-  ttsEngine: "edge",
+  ttsEngine: "elevenlabs",
 
   /** Which engine turns the visitor's speech into text: "deepgram" | "openai". */
   sttEngine: "deepgram",
@@ -102,8 +100,8 @@ export const DEFAULTS = {
    */
   elevenModel: "",
 
-  /** OpenAI ships one voice for both languages; there is no per-language choice. */
-  openaiVoice: "alloy",
+  /** OpenAI ships one voice for both languages; the booth default follows the male preset. */
+  openaiVoice: "ash",
 
   /**
    * How long an answer should be, in words. The Arabic voice speaks about two words

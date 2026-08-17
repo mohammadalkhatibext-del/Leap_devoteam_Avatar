@@ -106,7 +106,9 @@ body {
   box-shadow: var(--shadow);
 }
 .chip:hover {
+  background: var(--dv-poppy);
   border-color: var(--dv-poppy);
+  color: #fff;
 }
 a.chip {
   text-decoration: none;
@@ -173,7 +175,8 @@ button {
   color: #fff;
 }
 button:hover:not(:disabled) {
-  background: #bd2c41;
+  background: var(--dv-poppy);
+  color: #fff;
 }
 button:disabled {
   opacity: 0.4;
@@ -185,7 +188,9 @@ button.secondary {
   border: 1px solid var(--border);
 }
 button.secondary:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--dv-poppy);
+  border-color: var(--dv-poppy);
+  color: #fff;
 }
 
 .row {
