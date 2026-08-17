@@ -1,14 +1,6 @@
 import { initTheme, toggleTheme, currentTheme } from "./theme.js";
 
 const $ = (id) => document.getElementById(id);
-const safeHtml = (id, html) => {
-  const el = $(id);
-  if (el) el.innerHTML = html;
-};
-const safeText = (id, text) => {
-  const el = $(id);
-  if (el) el.textContent = text;
-};
 
 /**
  * Booth settings, for a Devoteam staffer on a stand rather than a developer.
@@ -39,26 +31,6 @@ let providers = [];
 let ttsEngines = [];
 let sttEngines = [];
 let elevenVoices = [];
-const DEFAULT_PROVIDER_ID = "anam";
-const DEFAULT_STT_ENGINE = "deepgram";
-const DEFAULT_SETTINGS = {
-  avatarProvider: DEFAULT_PROVIDER_ID,
-  ttsEngine: "elevenlabs",
-  sttEngine: DEFAULT_STT_ENGINE,
-  answerWords: 35,
-  idleResetMinutes: 5,
-  greetFirstAnswer: true,
-  akoolSessionSeconds: 300,
-  fallback: {
-    enabled: true,
-    mode: "speak",
-    messageAr: "أعتذر، النظام ما يقدر يجاوب الحين. تفضلوا، أحد زملائي هنا في الجناح يسعده مساعدتكم.",
-    messageEn: "I'm sorry — I can't answer right now. One of my colleagues here at the stand would be glad to help you.",
-  },
-  elevenVoiceAr: "rPNcQ53R703tTmtue1AT",
-  elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
-  openaiVoice: "ash",
-};
 const TTS_DEFAULT_VOICES = {
   elevenlabs: {
     male: { ar: "rPNcQ53R703tTmtue1AT", en: "wAGzRVkxKEs8La0lmdrE" },
@@ -141,9 +113,9 @@ function applyTtsGender(value) {
 function read() {
   const s = {};
   for (const id of TEXT_FIELDS) s[id] = $(id).value;
-  s.avatarProvider = selected("providerChoices", "provider") || DEFAULT_PROVIDER_ID;
+  s.avatarProvider = selected("providerChoices", "provider") || "anam";
   s.ttsEngine = selected("ttsChoices", "engine") || defaultTtsEngine();
-  s.sttEngine = selected("sttChoices", "engine") || DEFAULT_STT_ENGINE;
+  s.sttEngine = selected("sttChoices", "engine") || "deepgram";
   const gender = selected("ttsGenderChoices", "gender") || ttsGenderForSettings(s);
   if (s.ttsEngine === "openai") {
     s.openaiVoice = TTS_DEFAULT_VOICES.openai[gender] ?? "ash";
@@ -196,10 +168,10 @@ function write(s) {
   applyFallbackSettings();
   select("lengthChoices", "words", nearestLength(s.answerWords));
   select("fallbackMode", "mode", s.fallback?.mode ?? "speak");
-  select("providerChoices", "provider", s.avatarProvider ?? DEFAULT_PROVIDER_ID);
+  select("providerChoices", "provider", s.avatarProvider ?? "anam");
   const ttsValue = (s.ttsEngine && ttsEngines.some((e) => e.id === s.ttsEngine)) ? s.ttsEngine : defaultTtsEngine();
   select("ttsChoices", "engine", ttsValue);
-  select("sttChoices", "engine", s.sttEngine ?? DEFAULT_STT_ENGINE);
+  select("sttChoices", "engine", s.sttEngine ?? "deepgram");
   const currentTtsEngine = selected("ttsChoices", "engine") || defaultTtsEngine();
   const gender = ttsGenderForSettings({ ...s, ttsEngine: currentTtsEngine });
   if (currentTtsEngine === "openai") {
@@ -266,27 +238,23 @@ function applyTtsEngine() {
   const id = selected("ttsChoices", "engine") || defaultTtsEngine();
   const e = ttsEngines.find((x) => x.id === id) || ttsEngines[0];
 
-  if ("microsoftVoiceFields" in window && $("microsoftVoiceFields")) $("microsoftVoiceFields").hidden = e?.voiceMode !== "microsoft";
-  if ("elevenVoiceFields" in window && $("elevenVoiceFields")) $("elevenVoiceFields").hidden = e?.voiceMode !== "pair";
-  if ("voiceEnField" in window && $("voiceEnField")) $("voiceEnField").hidden = e?.voiceMode !== "microsoft";
-  if ("openaiVoiceFields" in window && $("openaiVoiceFields")) $("openaiVoiceFields").hidden = id !== "openai";
-  if ("ttsGenderFields" in window && $("ttsGenderFields")) $("ttsGenderFields").hidden = !["elevenlabs", "openai"].includes(id);
+  $("microsoftVoiceFields").hidden = e?.voiceMode !== "microsoft";
+  $("elevenVoiceFields").hidden = e?.voiceMode !== "pair";
+  $("voiceEnField").hidden = e?.voiceMode !== "microsoft";
+  $("openaiVoiceFields").hidden = id !== "openai";
+  $("ttsGenderFields").hidden = !["elevenlabs", "openai"].includes(id);
   const gender = selected("ttsGenderChoices", "gender") || (id === "openai" ? "male" : "male");
   select("ttsGenderChoices", "gender", gender);
 
   const renderer = providers.find((x) => x.id === (selected("providerChoices", "provider") || "anam"));
-  const ttsHint = $("ttsHint");
   if (renderer?.mode === "text") {
-    if (ttsHint) {
-      ttsHint.innerHTML =
-        `<b style="color:var(--dv-intense-fire)">${escape(renderer.label)} speaks with its own voice,</b> ` +
-        `so whichever engine you pick here is bypassed. Switch the renderer above to hear it at the booth.`;
-    }
+    $("ttsHint").innerHTML =
+      `<b style="color:var(--dv-intense-fire)">${escape(renderer.label)} speaks with its own voice,</b> ` +
+      `so whichever engine you pick here is bypassed. Switch the renderer above to hear it at the booth.`;
     return;
   }
 
-  if (!ttsHint) return;
-  ttsHint.innerHTML = !e
+  $("ttsHint").innerHTML = !e
     ? ""
     : (e.configured
         ? escape(e.blurb)
@@ -308,9 +276,7 @@ function applyAkoolSession() {
   const seconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
   const minutes = seconds / 60;
   const sessions = (creditsPerMin) => Math.floor(1200 / (creditsPerMin * minutes));
-  const hint = $("akoolSessionHint");
-  if (!hint) return;
-  hint.innerHTML =
+  $("akoolSessionHint").innerHTML =
     `Charged for the whole window, not for speech — so on 1200 credits (Pro Max) this is ` +
     `<b>${sessions(7.2)}–${sessions(30)} visitors a month</b>, depending on which rate Akool ` +
     `bills you at (they publish 1.2 credits/10s in one place and 30/min in another — ` +
@@ -320,9 +286,7 @@ function applyAkoolSession() {
 function applySttEngine() {
   const id = selected("sttChoices", "engine") || "deepgram";
   const e = sttEngines.find((x) => x.id === id);
-  const sttHint = $("sttHint");
-  if (!sttHint) return;
-  sttHint.innerHTML = !e
+  $("sttHint").innerHTML = !e
     ? ""
     : e.configured
       ? escape(e.blurb)
@@ -346,26 +310,39 @@ function applyFallbackSettings() {
  * else — the failure would look like a bug rather than a property of the vendor.
  */
 function applyProvider() {
-  const id = selected("providerChoices", "provider") || DEFAULT_PROVIDER_ID;
+  const id = selected("providerChoices", "provider") || "anam";
   const p = providers.find((x) => x.id === id);
 
-  const anamFields = $("anamFields"); if (anamFields) anamFields.hidden = id !== "anam";
-  const simliFields = $("simliFields"); if (simliFields) simliFields.hidden = id !== "simli";
-  const akoolFields = $("akoolFields"); if (akoolFields) akoolFields.hidden = id !== "akool";
+  $("anamFields").hidden = id !== "anam";
+  $("simliFields").hidden = id !== "simli";
+  $("akoolFields").hidden = id !== "akool";
   applyFraming();
 
   const usesOurVoice = p?.mode !== "text";
 
-  const voiceHint = $("voiceHint");
-  if (voiceHint) {
-    voiceHint.innerHTML = usesOurVoice
-      ? `${p?.label ?? "This renderer"} lip-syncs the Arabic we generate — pick the engine and voice below.`
-      : `<b style="color:var(--dv-intense-fire)">${p?.label} speaks with its own voice.</b> ` +
-        `It has no audio input, so our Arabic voice is bypassed entirely — comparing its lip-sync ` +
-        `with the others means comparing two different voices at once.`;
-  }
+  // The section intro has to move with the provider too. Telling an operator to "pick
+  // a voice that matches the avatar" directly above a panel with no voice pickers in
+  // it is the same defect as showing the wrong fields — text that describes a
+  // configuration the page is not currently offering.
+  $("whoLead").textContent = usesOurVoice
+    ? "The face on screen and the voice it speaks with. Each language has its own voice — pick one that matches the avatar, or visitors notice the mismatch before they notice anything else."
+    : `The face on screen. ${p?.label ?? "This renderer"} supplies the voice as well, so there is nothing to match here — choose the avatar and its voice in the ${p?.label ?? "vendor"} dashboard.`;
+  $("voiceHint").innerHTML = usesOurVoice
+    ? `${p?.label ?? "This renderer"} lip-syncs the Arabic we generate — pick the engine and voice below.`
+    : `<b style="color:var(--dv-intense-fire)">${p?.label} speaks with its own voice.</b> ` +
+      `It has no audio input, so our Arabic voice is bypassed entirely — comparing its lip-sync ` +
+      `with the others means comparing two different voices at once.`;
 
+  // The sound card's own hint depends on this choice, so it has to be re-rendered
+  // whenever the renderer changes — not only when the engine does.
   if (ttsEngines.length) applyTtsEngine();
+
+  $("providerHint").innerHTML = !p
+    ? ""
+    : p.configured
+      ? escape(p.blurb)
+      : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(p.missing.join(", "))} in .env. ` +
+        `Saving this will leave the booth unable to connect.`;
 }
 
 /** Snap an arbitrary saved word count to the closest of the three presets. */
@@ -375,8 +352,7 @@ function nearestLength(words) {
 }
 
 function selected(groupId, key) {
-  const group = $(groupId);
-  return group?.querySelector('[aria-pressed="true"]')?.dataset[key];
+  return $(groupId).querySelector('[aria-pressed="true"]')?.dataset[key];
 }
 
 function select(groupId, key, value) {
@@ -394,77 +370,13 @@ function bindCollapse(buttonId, panelId) {
   const sync = () => {
     const expanded = !panel.hidden;
     btn.setAttribute("aria-expanded", String(expanded));
-    const chevron = btn.querySelector(".chevron");
-    if (chevron) chevron.textContent = expanded ? "▴" : "▾";
+    btn.querySelector(".chevron").textContent = expanded ? "▴" : "▾";
   };
   btn.addEventListener("click", () => {
     panel.hidden = !panel.hidden;
     sync();
   });
   sync();
-}
-
-function seedDefaultUi() {
-  const providerGroup = $("providerChoices");
-  if (providerGroup && !providerGroup.children.length) {
-    for (const option of [
-      { id: "anam", label: "Anam" },
-      { id: "simli", label: "Simli" },
-      { id: "akool", label: "Akool" },
-    ]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.dataset.provider = option.id;
-      btn.textContent = option.label;
-      providerGroup.appendChild(btn);
-    }
-  }
-  if (providerGroup) select("providerChoices", "provider", DEFAULT_PROVIDER_ID);
-
-  const ttsGroup = $("ttsChoices");
-  if (ttsGroup && !ttsGroup.children.length) {
-    for (const option of [
-      { id: "elevenlabs", label: "ElevenLabs" },
-      { id: "openai", label: "OpenAI" },
-    ]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.dataset.engine = option.id;
-      btn.textContent = option.label;
-      ttsGroup.appendChild(btn);
-    }
-  }
-  if (ttsGroup) select("ttsChoices", "engine", "elevenlabs");
-
-  const sttGroup = $("sttChoices");
-  if (sttGroup && !sttGroup.children.length) {
-    for (const option of [
-      { id: "deepgram", label: "Deepgram" },
-      { id: "openai", label: "OpenAI" },
-    ]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.dataset.engine = option.id;
-      btn.textContent = option.label;
-      sttGroup.appendChild(btn);
-    }
-  }
-  if (sttGroup) select("sttChoices", "engine", DEFAULT_STT_ENGINE);
-
-  if ($("ttsGenderChoices")) {
-    select("ttsGenderChoices", "gender", "male");
-  }
-  if ($("fallbackEnabled")) $("fallbackEnabled").checked = true;
-  if ($("fallbackMode")) select("fallbackMode", "mode", "speak");
-  if ($("fallbackAr")) $("fallbackAr").value = DEFAULT_SETTINGS.fallback.messageAr;
-  if ($("fallbackEn")) $("fallbackEn").value = DEFAULT_SETTINGS.fallback.messageEn;
-  if ($("elevenVoiceAr")) $("elevenVoiceAr").value = DEFAULT_SETTINGS.elevenVoiceAr;
-  if ($("elevenVoiceEn")) $("elevenVoiceEn").value = DEFAULT_SETTINGS.elevenVoiceEn;
-  if ($("openaiVoice")) $("openaiVoice").value = DEFAULT_SETTINGS.openaiVoice;
-  if ($("avatarId")) $("avatarId").value = "";
-
-  write(DEFAULT_SETTINGS);
-  renderPreview();
 }
 
 for (const groupId of [
@@ -518,16 +430,6 @@ bindCollapse("sttTestToggle", "sttTestPanel");
 bindCollapse("fallbackToggle", "fallbackPanel");
 bindCollapse("knowledgeToggle", "knowledgePanel");
 
-if (!selected("providerChoices", "provider")) {
-  select("providerChoices", "provider", DEFAULT_PROVIDER_ID);
-}
-if (!selected("ttsChoices", "engine")) {
-  select("ttsChoices", "engine", DEFAULT_TTS_ENGINE);
-}
-if (!selected("sttChoices", "engine")) {
-  select("sttChoices", "engine", DEFAULT_STT_ENGINE);
-}
-
 // The test-lab language is not a setting — it decides which line gets synthesised
 // here and nothing else, so it must never mark the form dirty or the operator would
 // be prompted to save a preference that does not exist.
@@ -554,7 +456,7 @@ function renderPreview() {
   const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
   const providerName = p?.label ?? "Anam";
 
-  const providerLine = `Visitors meet an <b>${escape(providerName)}</b> avatar.`;
+  const providerLine = `Visitors meet the <b>${escape(providerName)}</b> avatar.`;
 
   let voiceLine = `Voice is provided by <b>${escape(tts?.label ?? s.ttsEngine)}</b>.`;
   if (p?.mode === "text") {
@@ -563,11 +465,11 @@ function renderPreview() {
     const gender = selected("ttsGenderChoices", "gender") || "male";
     const arName = gender === "female" ? "Abrar Sabbah" : "Mohammed Almansari";
     const enName = gender === "female" ? "Abrar Sabbah" : "Mohammed Almansari";
-    voiceLine = `Voice is provided by <b>ElevenLabs</b> using <b>${escape(arName)}</b> for Arabic and <b>${escape(enName)}</b> for English.`;
+    voiceLine = `Voice is provided by <b>ElevenLabs</b>, using <b>${escape(arName)}</b> for Arabic and <b>${escape(enName)}</b> for English.`;
   } else if (tts?.id === "openai") {
     const gender = selected("ttsGenderChoices", "gender") || "male";
-    const voiceName = gender === "female" ? "Nova" : "Ash";
-    voiceLine = `Voice is provided by <b>OpenAI</b> using <b>${escape(voiceName)}</b> for Arabic and English.`;
+    const name = gender === "female" ? "Nova" : "Ash";
+    voiceLine = `Voice is provided by <b>OpenAI</b>, using <b>${escape(name)}</b> for both Arabic and English.`;
   } else if (tts?.voiceMode === "microsoft") {
     voiceLine = `Voice is provided by <b>${escape(tts.label ?? "Microsoft")}</b>.`;
   }
@@ -581,16 +483,13 @@ function renderPreview() {
     ? `Failed answers use <b>${fallbackLine}</b> as the fallback response.`
     : `Fallback response is <b>${fallbackLine}</b>.`;
 
-  const preview = $("preview");
-  if (preview) {
-    preview.innerHTML = [
-      providerLine,
-      voiceLine,
-      `Listening uses <b>${escape(stt?.label ?? s.sttEngine)}</b>.`,
-      sessionLine,
-      fallbackSentence,
-    ].join(" ");
-  }
+  $("preview").innerHTML = [
+    providerLine,
+    voiceLine,
+    `Listening uses <b>${escape(stt?.label ?? s.sttEngine)}</b>.`,
+    sessionLine,
+    fallbackSentence,
+  ].join(" ");
 }
 
 const escape = (v) =>
@@ -640,7 +539,6 @@ function play(wavBase64) {
 
 function renderTtsResults(results, chosen) {
   const box = $("ttsResults");
-  if (!box) return;
   box.innerHTML = "";
   for (const r of results) {
     const row = document.createElement("div");
@@ -656,6 +554,8 @@ function renderTtsResults(results, chosen) {
       btn.textContent = "▶ Play";
       btn.onclick = () => play(r.wav);
       row.appendChild(btn);
+      // Play the chosen engine straight away so the common case — "what does the
+      // engine I am about to save sound like" — needs one click, not two.
       if (r.engine === chosen) play(r.wav);
     } else {
       row.innerHTML =
@@ -670,12 +570,8 @@ async function compareTts(engines) {
   const text = $("testText").value.trim();
   if (!text) return status("Type a line to test first", "err");
 
-  const speakOne = $("speakOne");
-  const speakAll = $("speakAll");
-  const ttsResults = $("ttsResults");
-  if (speakOne) speakOne.disabled = true;
-  if (speakAll) speakAll.disabled = true;
-  if (ttsResults) ttsResults.innerHTML = `<div class="result"><span class="meta">Synthesising…</span></div>`;
+  $("speakOne").disabled = $("speakAll").disabled = true;
+  $("ttsResults").innerHTML = `<div class="result"><span class="meta">Synthesising…</span></div>`;
   try {
     const res = await fetch("/api/tts/compare", {
       method: "POST",
@@ -701,18 +597,15 @@ async function compareTts(engines) {
     if (!body.results.length) throw new Error("no engines are configured — add a key to .env");
     renderTtsResults(body.results, selected("ttsChoices", "engine"));
   } catch (err) {
-    if (ttsResults) ttsResults.innerHTML = "";
+    $("ttsResults").innerHTML = "";
     status(err.message, "err");
   } finally {
-    if (speakOne) speakOne.disabled = false;
-    if (speakAll) speakAll.disabled = false;
+    $("speakOne").disabled = $("speakAll").disabled = false;
   }
 }
 
-const speakOneBtn = $("speakOne");
-const speakAllBtn = $("speakAll");
-if (speakOneBtn) speakOneBtn.onclick = () => compareTts([selected("ttsChoices", "engine") || defaultTtsEngine()]);
-if (speakAllBtn) speakAllBtn.onclick = () => compareTts(undefined);
+$("speakOne").onclick = () => compareTts([selected("ttsChoices", "engine") || defaultTtsEngine()]);
+$("speakAll").onclick = () => compareTts(undefined);
 
 /* --- microphone -------------------------------------------------------- */
 
@@ -730,30 +623,24 @@ async function toggleRecording() {
     chunks = [];
     recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     recorder.onstop = async () => {
+      // Release the mic immediately — leaving the track live keeps the browser's
+      // recording indicator on and makes an operator think it is still listening.
       for (const t of stream.getTracks()) t.stop();
-      const recBtn = $("recBtn");
-      if (recBtn) {
-        recBtn.textContent = "● Record a question";
-        recBtn.classList.add("secondary");
-      }
+      $("recBtn").textContent = "● Record a question";
+      $("recBtn").classList.add("secondary");
       await compareStt(new Blob(chunks, { type: recorder.mimeType }));
     };
     recorder.start();
-    const recBtn = $("recBtn");
-    if (recBtn) {
-      recBtn.textContent = "■ Stop and transcribe";
-      recBtn.classList.remove("secondary");
-    }
-    const sttResults = $("sttResults");
-    if (sttResults) sttResults.innerHTML = "";
+    $("recBtn").textContent = "■ Stop and transcribe";
+    $("recBtn").classList.remove("secondary");
+    $("sttResults").innerHTML = "";
   } catch (err) {
     status(`Microphone unavailable: ${err.message}`, "err");
   }
 }
 
 async function compareStt(blob) {
-  const sttResults = $("sttResults");
-  if (sttResults) sttResults.innerHTML = `<div class="result"><span class="meta">Transcribing…</span></div>`;
+  $("sttResults").innerHTML = `<div class="result"><span class="meta">Transcribing…</span></div>`;
   try {
     const res = await fetch("/api/stt/compare", {
       method: "POST",
@@ -765,7 +652,6 @@ async function compareStt(blob) {
 
     const chosen = selected("sttChoices", "engine");
     const box = $("sttResults");
-    if (!box) return;
     box.innerHTML = "";
     if (!body.results.length) throw new Error("no engines are configured — add a key to .env");
 
@@ -780,25 +666,21 @@ async function compareStt(blob) {
       box.appendChild(row);
     }
   } catch (err) {
-    const box = $("sttResults");
-    if (box) box.innerHTML = "";
+    $("sttResults").innerHTML = "";
     status(err.message, "err");
   }
 }
 
-const recBtn = $("recBtn");
-if (recBtn) recBtn.onclick = toggleRecording;
+$("recBtn").onclick = toggleRecording;
 
 /* ------------------------------------------------------------------ status */
 
 let statusTimer = 0;
 function status(msg, kind = "") {
   clearTimeout(statusTimer);
-  const statusEl = $("status");
-  if (!statusEl) return;
-  statusEl.textContent = msg;
-  statusEl.className = `status ${kind}`;
-  if (msg) statusTimer = setTimeout(() => { const el = $("status"); if (el) el.textContent = ""; }, 4000);
+  $("status").textContent = msg;
+  $("status").className = `status ${kind}`;
+  if (msg) statusTimer = setTimeout(() => ($("status").textContent = ""), 4000);
 }
 
 function dirty() {
@@ -813,13 +695,11 @@ for (const id of [
   "fallbackAr",
   "fallbackEn",
 ]) {
-  const el = $(id);
-  if (!el) continue;
-  el.addEventListener("input", () => {
+  $(id).addEventListener("input", () => {
     renderPreview();
     dirty();
   });
-  el.addEventListener("change", () => {
+  $(id).addEventListener("change", () => {
     if (id === "fallbackEnabled") applyFallbackSettings();
     renderPreview();
     dirty();
@@ -877,7 +757,7 @@ labelTheme();
 
 async function boot() {
   const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([
-    fetch("/api/settings").then((r) => r.json()).catch(() => ({})),
+    fetch("/api/settings").then((r) => r.json()),
     fetch("/api/avatars").then((r) => r.json()).catch(() => ({ data: [] })),
     fetch("/api/voices").then((r) => r.json()).catch(() => ({ voices: [] })),
     fetch("/api/avatar/providers").then((r) => r.json()).catch(() => ({ providers: [] })),
@@ -894,35 +774,27 @@ async function boot() {
 
   const engineButtons = (groupId, list, note) => {
     const group = $(groupId);
-    if (!group) return;
-    if (!group.children.length) {
-      const fallback = groupId === "ttsChoices"
-        ? [{ id: "elevenlabs", label: "ElevenLabs" }]
-        : [{ id: "deepgram", label: "Deepgram" }];
-      const items = list.length ? list : fallback;
-      for (const e of items) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.dataset.engine = e.id;
-        b.innerHTML = groupId === "ttsChoices"
-          ? escape(e.label)
-          : `${escape(e.label)}<small>${escape(e.configured ? note(e) : "not configured")}</small>`;
-        group.appendChild(b);
-      }
+    group.innerHTML = "";
+    for (const e of list) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.engine = e.id;
+      b.innerHTML = groupId === "ttsChoices"
+        ? escape(e.label)
+        : `${escape(e.label)}<small>${escape(e.configured ? note(e) : "not configured")}</small>`;
+      group.appendChild(b);
     }
   };
   engineButtons("ttsChoices", ttsEngines, (e) => e.cost);
   engineButtons("sttChoices", sttEngines, () => "ready");
 
   const openaiSel = $("openaiVoice");
-  if (openaiSel) {
-    openaiSel.innerHTML = "";
-    for (const v of ttsRes.openaiVoices ?? []) {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = v;
-      openaiSel.appendChild(o);
-    }
+  openaiSel.innerHTML = "";
+  for (const v of ttsRes.openaiVoices ?? []) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    openaiSel.appendChild(o);
   }
 
   /**
@@ -941,7 +813,6 @@ async function boot() {
   // one, and the ordering is the cheapest way to say which voices belong here.
   for (const [selId, langCode] of [["elevenVoiceAr", "ar"], ["elevenVoiceEn", "en"]]) {
     const sel = $(selId);
-    if (!sel) continue;
     sel.innerHTML = "";
     if (!elevenVoices.length) {
       const savedId = settings[selId];
@@ -976,26 +847,21 @@ async function boot() {
   }
 
   const modelSel = $("elevenModel");
-  if (modelSel) {
-    modelSel.innerHTML = "";
-    const useEnvModel = document.createElement("option");
-    useEnvModel.value = "";
-    useEnvModel.textContent = "Use ELEVENLABS_MODEL_ID from .env";
-    modelSel.appendChild(useEnvModel);
-    for (const m of ttsRes.elevenModels ?? []) {
-      const o = document.createElement("option");
-      o.value = m.id;
-      o.textContent = `${m.label} — ${m.note}`;
-      modelSel.appendChild(o);
-    }
+  modelSel.innerHTML = "";
+  const useEnvModel = document.createElement("option");
+  useEnvModel.value = "";
+  useEnvModel.textContent = "Use ELEVENLABS_MODEL_ID from .env";
+  modelSel.appendChild(useEnvModel);
+  for (const m of ttsRes.elevenModels ?? []) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = `${m.label} — ${m.note}`;
+    modelSel.appendChild(o);
   }
 
-  const elevenHint = $("elevenHint");
-  if (elevenHint) {
-    elevenHint.textContent = elevenVoices.length
-      ? `${elevenVoices.length} voices on this account, native ones listed first for each language.`
-      : "Could not reach ElevenLabs — showing the saved values. Check ELEVENLABS_API_KEY, then reload.";
-  }
+  $("elevenHint").textContent = elevenVoices.length
+    ? `${elevenVoices.length} voices on this account, native ones listed first for each language.`
+    : "Could not reach ElevenLabs — showing the saved values. Check ELEVENLABS_API_KEY, then reload.";
 
   /**
    * Akool avatars from the account, offered as suggestions on a still-typeable field.
@@ -1006,25 +872,20 @@ async function boot() {
    */
   const akoolAvatars = akoolRes.avatars ?? [];
   const akoolList = $("akoolAvatarList");
-  if (akoolList) {
-    akoolList.innerHTML = "";
-    for (const a of akoolAvatars) {
-      const o = document.createElement("option");
-      o.value = a.id;
-      o.label = a.name;
-      akoolList.appendChild(o);
-    }
+  akoolList.innerHTML = "";
+  for (const a of akoolAvatars) {
+    const o = document.createElement("option");
+    o.value = a.id;
+    o.label = a.name;
+    akoolList.appendChild(o);
   }
-  const akoolHint = $("akoolHint");
-  if (akoolHint) {
-    akoolHint.innerHTML =
-      (akoolAvatars.length
-        ? `${akoolAvatars.length} avatars on this Akool account — start typing to pick one. `
-        : `No avatars listed yet: add AKOOL_API_KEY (or the client id/secret pair) and AKOOL_AVATAR_ID to .env, then reload. `) +
-      `<b style="color:var(--dv-intense-fire)">Akool charges for the session window, not for speech.</b> ` +
-      `Credits are pre-charged for the full requested duration and only refunded when the session ends, ` +
-      `so an idle open session costs the same as a busy one — close sessions between visitors.`;
-  }
+  $("akoolHint").innerHTML =
+    (akoolAvatars.length
+      ? `${akoolAvatars.length} avatars on this Akool account — start typing to pick one. `
+      : `No avatars listed yet: add AKOOL_API_KEY (or the client id/secret pair) and AKOOL_AVATAR_ID to .env, then reload. `) +
+    `<b style="color:var(--dv-intense-fire)">Akool charges for the session window, not for speech.</b> ` +
+    `Credits are pre-charged for the full requested duration and only refunded when the session ends, ` +
+    `so an idle open session costs the same as a busy one — close sessions between visitors.`;
 
   // Seed the test lab with the hard Arabic line, so the first thing an operator hears
   // is the case that actually discriminates between engines.
@@ -1035,72 +896,64 @@ async function boot() {
   // Provider picker. The subtitle on each button is the honest one-liner from the
   // registry — "not configured" is shown up front rather than discovered at a booth.
   const group = $("providerChoices");
-  if (group && !group.children.length) {
-    const providerList = providers.length ? providers : [{ id: "anam", label: "Anam" }];
-    for (const p of providerList) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.provider = p.id;
-      b.textContent = p.label;
-      group.appendChild(b);
-    }
+  group.innerHTML = "";
+  for (const p of providers) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.provider = p.id;
+    b.textContent = p.label;
+    group.appendChild(b);
   }
 
   // Avatars: real names from the account, so the operator picks a face not a UUID.
   const avatarSel = $("avatarId");
-  if (avatarSel) {
-    avatarSel.innerHTML = "";
-    const avatars = avatarsRes.data ?? [];
+  avatarSel.innerHTML = "";
+  const avatars = avatarsRes.data ?? [];
 
-    if (!avatars.length) {
-      avatarSel.innerHTML = `<option value="${escape(settings.avatarId)}">${escape(settings.avatarId || "none configured")}</option>`;
-      const avatarHint = $("avatarHint");
-      if (avatarHint) avatarHint.textContent =
-        "Could not reach Anam — showing the saved value. Check ANAM_API_KEY, then reload.";
+  if (!avatars.length) {
+    avatarSel.innerHTML = `<option value="${escape(settings.avatarId)}">${escape(settings.avatarId || "none configured")}</option>`;
+    $("avatarHint").textContent =
+      "Could not reach Anam — showing the saved value. Check ANAM_API_KEY, then reload.";
+  } else {
+    // "Use the one from .env" has to be a real option, or an operator who has never
+    // touched this page cannot tell what the booth is actually using.
+    const useEnv = document.createElement("option");
+    useEnv.value = "";
+    useEnv.textContent = "Use the avatar configured in .env";
+    avatarSel.appendChild(useEnv);
+
+    for (const a of avatars) {
+      const o = document.createElement("option");
+      o.value = a.id;
+      o.textContent = a.displayName || a.id;
+      avatarSel.appendChild(o);
+    }
+
+    /**
+     * A saved avatar that this API key cannot use is the failure that wastes the most
+     * time, because Anam's token endpoint returns 200 for it and only fails later with
+     * a black video. Keys get swapped between accounts; the saved id does not follow.
+     * Surface it here, where it is one dropdown away from being fixed.
+     */
+    const savedId = settings.avatarId;
+    const known = !savedId || avatars.some((a) => a.id === savedId);
+    if (!known) {
+      const missing = document.createElement("option");
+      missing.value = savedId;
+      missing.textContent = `⚠ ${savedId} — not on this account`;
+      avatarSel.insertBefore(missing, avatarSel.firstChild);
+      $("avatarHint").innerHTML =
+        `<b style="color:var(--dv-poppy)">The saved avatar is not available on this Anam key.</b> ` +
+        `The booth would connect and then show a black video. Pick one of the ${avatars.length} below and save.`;
     } else {
-      // "Use the one from .env" has to be a real option, or an operator who has never
-      // touched this page cannot tell what the booth is actually using.
-      const useEnv = document.createElement("option");
-      useEnv.value = "";
-      useEnv.textContent = "Use the avatar configured in .env";
-      avatarSel.appendChild(useEnv);
-
-      for (const a of avatars) {
-        const o = document.createElement("option");
-        o.value = a.id;
-        o.textContent = a.displayName || a.id;
-        avatarSel.appendChild(o);
-      }
-
-      /**
-       * A saved avatar that this API key cannot use is the failure that wastes the most
-       * time, because Anam's token endpoint returns 200 for it and only fails later with
-       * a black video. Keys get swapped between accounts; the saved id does not follow.
-       * Surface it here, where it is one dropdown away from being fixed.
-       */
-      const savedId = settings.avatarId;
-      const known = !savedId || avatars.some((a) => a.id === savedId);
-      if (!known) {
-        const missing = document.createElement("option");
-        missing.value = savedId;
-        missing.textContent = `⚠ ${savedId} — not on this account`;
-        avatarSel.insertBefore(missing, avatarSel.firstChild);
-        const avatarHint = $("avatarHint");
-        if (avatarHint) avatarHint.innerHTML =
-          `<b style="color:var(--dv-poppy)">The saved avatar is not available on this Anam key.</b> ` +
-          `The booth would connect and then show a black video. Pick one of the ${avatars.length} below and save.`;
-      } else {
-        const avatarHint = $("avatarHint");
-        if (avatarHint) avatarHint.textContent =
-          `${avatars.length} avatars available on this Anam account.` +
-          (savedId ? "" : " Currently following ANAM_AVATAR_ID from .env.");
-      }
+      $("avatarHint").textContent =
+        `${avatars.length} avatars available on this Anam account.` +
+        (savedId ? "" : " Currently following ANAM_AVATAR_ID from .env.");
     }
   }
 
   for (const [selId, lang] of [["voiceAr", "ar"], ["voiceEn", "en"]]) {
     const sel = $(selId);
-    if (!sel) continue;
     sel.innerHTML = "";
     const list = voices.filter((v) => v.language === lang);
     if (!list.length) {
@@ -1116,17 +969,10 @@ async function boot() {
   }
 
   saved = settings;
-  const defaultProvider = providers.find((p) => p.id === DEFAULT_PROVIDER_ID) ?? { id: DEFAULT_PROVIDER_ID, label: "Anam" };
-  const fallbackTts = ttsEngines.find((e) => e.id === DEFAULT_TTS_ENGINE) ?? { id: DEFAULT_TTS_ENGINE, label: "ElevenLabs" };
-  const fallbackStt = sttEngines.find((e) => e.id === DEFAULT_STT_ENGINE) ?? { id: DEFAULT_STT_ENGINE, label: "Deepgram" };
-  settings.avatarProvider = settings.avatarProvider || defaultProvider.id;
-  settings.ttsEngine = settings.ttsEngine || fallbackTts.id;
-  settings.sttEngine = settings.sttEngine || fallbackStt.id;
   write(settings);
   $("lengthHint").textContent =
     "Measured out loud, not derived: the Arabic voice speaks about 1.4 words a second, " +
     "and the answer usually runs a little over the budget you set here.";
 }
 
-seedDefaultUi();
 boot().catch((err) => status(`Could not load settings: ${err.message}`, "err"));
