@@ -21,7 +21,13 @@
 
 import { ask } from "./claude.mjs";
 import { getSettings, saveSettings, resetSettings, DEFAULTS, ANSWER_MODELS } from "./settings.mjs";
-import { createSession, closeSession, listProviders, listAkoolAvatars } from "./providers.mjs";
+import {
+  createSession,
+  closeSession,
+  listProviders,
+  listAkoolAvatars,
+  boothAvatars,
+} from "./providers.mjs";
 import { ensureTts, prewarmEngine, speak, SpeechQueue, SAMPLE_RATE, toWav } from "./tts.mjs";
 import {
   listTtsEngines,
@@ -240,7 +246,13 @@ export function boothApi({ log } = {}) {
           headers: { Authorization: `Bearer ${key}` },
         });
         const body = await r.json().catch(() => ({}));
-        json(res, 200, { data: body.data ?? [] });
+        // The picker shows the booth's two faces under the booth's own names, not
+        // the ten this account happens to hold. See BOOTH_AVATARS.
+        const data = boothAvatars("anam", body.data ?? []).map((a) => ({
+          id: a.id,
+          displayName: a.name,
+        }));
+        json(res, 200, { data });
         return true;
       }
 
@@ -304,7 +316,7 @@ export function boothApi({ log } = {}) {
 
       if (url.pathname === "/api/akool/avatars") {
         try {
-          json(res, 200, { avatars: await listAkoolAvatars() });
+          json(res, 200, { avatars: boothAvatars("akool", await listAkoolAvatars()) });
         } catch {
           json(res, 200, { avatars: [] }); // admin page still loads
         }

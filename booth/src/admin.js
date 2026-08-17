@@ -311,22 +311,11 @@ function applyTtsEngine() {
         : "Choose the provider and voice used by the avatar.";
 }
 
-/**
- * Turn the session-length choice into the number an operator actually decides on:
- * how many visitors a month's credits will serve.
- *
- * Akool does not publish the streaming rate in its API docs and the two public
- * trackers disagree by 4x, so both are shown rather than one averaged figure that
- * would look authoritative and be wrong. The ratio between the buttons is exact
- * either way, and that is the part that matters: half the window, half the cost.
- */
+/** Keep the session-length hint in step with the buttons. */
 function applyAkoolSession() {
-  const seconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
-  const minutes = seconds / 60;
-  const sessions = (creditsPerMin) => Math.floor(1200 / (creditsPerMin * minutes));
   const hint = $("akoolSessionHint");
   if (!hint) return;
-  hint.textContent = "Akool charges for the full session duration rather than speech time. Shorter sessions reduce the cost per visitor.";
+  hint.textContent = "Shorter sessions reduce the cost per visitor.";
 }
 
 function applySttEngine() {
@@ -560,13 +549,28 @@ function renderPreview() {
   // in server/system-prompt.mjs. The old 2.2 was an English reading rate and told the
   // operator an answer would run half as long as it does.
   const seconds = Math.round(words / 1.4);
-  const av = [...$("avatarId").options].find((o) => o.value === s.avatarId)?.textContent;
+  // Name the face belonging to the selected renderer. Reading the Anam picker whatever
+  // the provider was is how the summary came to say "Visitors meet Faisal via Akool"
+  // while Akool was in fact set to Dalia.
+  // An empty id means "follow .env", and the picker labels that "Use configured
+  // avatar" — a sentence has to say it differently, so resolve to "" and let
+  // providerLine word it.
+  const optionText = (selId, value) =>
+    value ? [...($(selId)?.options ?? [])].find((o) => o.value === value)?.textContent : "";
+  const av =
+    s.avatarProvider === "akool"
+      ? optionText("akoolAvatarId", s.akoolAvatarId) || s.akoolAvatarId
+      : s.avatarProvider === "simli"
+        ? s.simliFaceId
+        : optionText("avatarId", s.avatarId) || s.avatarId;
   const p = providers.find((x) => x.id === s.avatarProvider) ?? providers[0];
   const tts = ttsEngines.find((x) => x.id === s.ttsEngine) ?? ttsEngines[0];
   const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
   const providerName = p?.label ?? "Anam";
 
-  const providerLine = `Visitors meet <b>${escape(av || "—")}</b> via <b>${escape(providerName)}</b>.`;
+  const providerLine = av
+    ? `Visitors meet <b>${escape(av)}</b> via <b>${escape(providerName)}</b>.`
+    : `Visitors meet the <b>configured avatar</b> via <b>${escape(providerName)}</b>.`;
 
   // What the operator needs from this line is which voice a visitor will actually
   // hear. The gender buttons are the control on this page and read() maps them
@@ -1025,16 +1029,36 @@ async function boot() {
    * *whole session window* it was asked for, not the seconds the avatar speaks, so
    * leaving sessions open is what drains an allowance — not talking a lot.
    */
+  // A select rather than the old text box with a datalist: a datalist still leaves the
+  // raw id sitting in the field once picked, and "kWte7SV6zSTmF07UZF_lW" tells an
+  // operator nothing about who is on screen.
   const akoolAvatars = akoolRes.avatars ?? [];
-  const akoolList = $("akoolAvatarList");
-  if (akoolList) {
-    akoolList.innerHTML = "";
+  const akoolSel = $("akoolAvatarId");
+  if (akoolSel) {
+    const savedAkoolId = settings.akoolAvatarId ?? "";
+    akoolSel.innerHTML = "";
+
+    const useEnv = document.createElement("option");
+    useEnv.value = "";
+    useEnv.textContent = "Use configured avatar";
+    akoolSel.appendChild(useEnv);
+
     for (const a of akoolAvatars) {
       const o = document.createElement("option");
       o.value = a.id;
-      o.label = a.name;
-      akoolList.appendChild(o);
+      o.textContent = a.name;
+      akoolSel.appendChild(o);
     }
+
+    // Same trap as Anam: a saved id this key cannot use fails at session-create, in
+    // front of a visitor. Keep it visible and selected rather than silently reset.
+    if (savedAkoolId && !akoolAvatars.some((a) => a.id === savedAkoolId)) {
+      const missing = document.createElement("option");
+      missing.value = savedAkoolId;
+      missing.textContent = `⚠ ${savedAkoolId} — not available`;
+      akoolSel.insertBefore(missing, akoolSel.firstChild);
+    }
+    akoolSel.value = savedAkoolId;
   }
   const akoolHint = $("akoolHint");
   if (akoolHint) {
@@ -1109,7 +1133,7 @@ async function boot() {
       } else {
         const avatarHint = $("avatarHint");
         if (avatarHint) avatarHint.textContent =
-          `${avatars.length} avatars available on this Anam account.` +
+          `The booth's ${avatars.length} faces.` +
           (savedId ? "" : " Currently following ANAM_AVATAR_ID from .env.");
       }
     }

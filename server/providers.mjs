@@ -109,6 +109,44 @@ async function akoolToken() {
 }
 
 /**
+ * The only two faces the booth offers, and the name an operator sees for each.
+ *
+ * The vendor lists are not a menu: Anam returns ten, Akool twenty, mostly stock
+ * people with no connection to Devoteam and ids like "dvp_Alinna_realisticbg_vrt".
+ * A staffer on the stand is choosing between two colleagues, so the picker offers
+ * two colleagues and nothing else.
+ *
+ * The ids are the contract; the labels are ours. The vendors do not agree on her
+ * name — Anam's displayName is "Dania", Akool's is "Dalia" — so the booth settles
+ * it here and says Dalia on both. Change a label and only the wording moves; the
+ * booth still connects to the same face.
+ */
+export const BOOTH_AVATARS = {
+  anam: [
+    { id: "278fec65-e75e-406b-a422-29c6233aba45", name: "Dalia" },
+    { id: "bba96e80-2946-4819-a356-73765fa5bb3c", name: "Faisal" },
+  ],
+  akool: [
+    { id: "kWte7SV6zSTmF07UZF_lW", name: "Dalia Akool" },
+    { id: "HTuWYZWa-faUiqwRqKIZg", name: "Faisal Akool" },
+  ],
+};
+
+/**
+ * Keep only the booth's two faces, relabelled.
+ *
+ * Filtering against what the account actually returned rather than just emitting the
+ * pair: a key swapped to another account should empty the picker and trip the "not on
+ * this account" warning the admin page already draws, not offer two ids that will fail
+ * at session-create in front of a visitor.
+ */
+export function boothAvatars(provider, fromVendor, idOf = (a) => a.id) {
+  const allowed = BOOTH_AVATARS[provider] ?? [];
+  const present = new Set((fromVendor ?? []).map(idOf));
+  return allowed.filter((a) => present.has(a.id));
+}
+
+/**
  * The streaming avatars this Akool key can use, for the admin picker.
  *
  * ONE path, deliberately. An earlier version tried v4 and fell back to
