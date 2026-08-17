@@ -158,14 +158,17 @@ export const DEFAULTS = {
    * Microsoft ones and a native Arabic voice plus a native English voice beats one
    * multilingual voice stretched across both.
    *
-   * These are pinned to the preferred male pair — Mohammed Almansari for Arabic and
-   * English. Because they are set rather than empty, they win over voiceGender above,
-   * and applyRuntimeDefaults() refills them whenever an operator clears them. The
-   * "empty means follow voiceGender, then ELEVENLABS_VOICE_AR / _EN from .env" path
-   * is therefore unreachable while these defaults stand; clear both here to get it
-   * back.
+   * These are pinned to the preferred male pair — Mohammed Almansari (Saudi) for
+   * Arabic, Sully for English. Verified against GET /v1/voices rather than by name:
+   * the account returns "Mohammed Almansari" with a leading space, so a name lookup
+   * silently missed it and the booth spoke as Mazen Lawand instead.
+   *
+   * Because they are set rather than empty, they win over voiceGender above, and
+   * applyRuntimeDefaults() refills them whenever an operator clears them. The "empty
+   * means follow voiceGender, then ELEVENLABS_VOICE_AR / _EN from .env" path is
+   * therefore unreachable while these defaults stand; clear both here to get it back.
    */
-  elevenVoiceAr: "rPNcQ53R703tTmtue1AT",
+  elevenVoiceAr: "2bnoa3wtrtcUW41TrSJM",
   elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
 
   /**

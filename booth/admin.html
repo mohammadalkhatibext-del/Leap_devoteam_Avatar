@@ -206,7 +206,7 @@
                  <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
                  <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
                </div>
-               <p class="hint" id="akoolSessionHint">Akool charges for the full session duration rather than speech time. Shorter sessions reduce the cost per visitor.</p>
+               <p class="hint" id="akoolSessionHint">Shorter sessions reduce the cost per visitor.</p>
              </div>
              <div class="field">
                <label class="toggle" for="releaseAvatarWhenIdle">
@@ -344,10 +344,8 @@
 
         <div class="field">
           <label>ANSWER LENGTH</label>
-          <!-- Seconds are measured out loud on the shipping Arabic voice, not derived
-               from a reading rate. Arabic through ElevenLabs runs about 1.4 words a
-               second, well under the 2.2 these buttons used to assume — they promised
-               half the length they delivered. -->
+          <!-- Seconds come from the shipping Arabic voice's measured 1.4 words a second
+               (WORDS_PER_SECOND in server/system-prompt.mjs), not a reading rate. -->
           <div class="choices" id="lengthChoices">
             <button type="button" data-words="22">Short<small>~16 seconds</small></button>
             <button type="button" data-words="35">Normal<small>~25 seconds</small></button>
@@ -367,21 +365,13 @@
           <label>HOW FAST IT ANSWERS</label>
           <div class="choices" id="modelChoices">
             <button type="button" data-model="claude-sonnet-5">
-              Sonnet 5<small>~2.0s · holds the register</small>
+              Sonnet 5<small>~2.0s · best quality</small>
             </button>
             <button type="button" data-model="claude-haiku-4-5-20251001">
-              Haiku 4.5<small>~1.1s · looser</small>
+              Haiku 4.5<small>~1.1s · fastest</small>
             </button>
           </div>
-          <p class="hint">
-            Time from the question ending to the first word being available to speak,
-            measured against this knowledge base. Haiku is genuinely about a second
-            quicker. It is not the default because on the same three Arabic questions it
-            ran 62, 32 and 19 words against a 22-word budget, and wrote "11,000" in
-            digits where the answer should say the number in words — which an Arabic
-            voice can read wrong out loud.
-            <b>Listen to a few answers on it before an event, not during one.</b>
-          </p>
+          <p class="hint">Choose the model based on response speed and answer quality.</p>
         </div>
 
         <div class="field">
@@ -394,25 +384,14 @@
       <!-- ----------------------------------------------------- activation -->
       <div class="card section">
         <h2>Turning the avatar on and off</h2>
-        <p class="lead">
-          A live avatar session costs something on every renderer — money, or one of the
-          limited number of sessions your account can hold open at once. These two
-          settings decide how much of the day the stand spends paying for a screen
-          nobody is standing at.
-        </p>
+        <p class="lead">Control when the avatar connects and when it disconnects.</p>
 
         <div class="field">
           <label class="toggle" for="requireTapToStart">
             <input id="requireTapToStart" type="checkbox" />
             <span>Wait for a visitor to touch the screen before connecting</span>
           </label>
-          <p class="hint">
-            On, the booth opens asleep and the whole panel is the start button. Off, it
-            connects the moment the page loads and holds the session all day — only
-            worth it for a demo where a face already on screen when someone walks in is
-            the effect you are showing. The booth can still answer typed questions while
-            asleep; it wakes itself first.
-          </p>
+          <p class="hint">Starts the avatar session when a visitor interacts with the booth.</p>
         </div>
 
         <div class="field">
@@ -420,13 +399,7 @@
             Close the session after this many minutes of silence
           </label>
           <input id="idleDisconnectMinutes" type="number" min="1" max="60" />
-          <p class="hint">
-            Separate from the conversation reset above, and normally shorter: the face
-            should go before the words do, because the face is the part that costs.
-            Reconnecting takes a few seconds and is paid while the next visitor is
-            walking up. Raise it if the stand is busy enough that it reconnects
-            constantly.
-          </p>
+          <p class="hint">Ends the avatar session after the selected period of inactivity.</p>
         </div>
 
         <div class="field">
@@ -447,14 +420,8 @@
           </div>
           <p class="hint" id="framingHint"></p>
           <p class="hint">
-            Saved per renderer — these controls always edit whichever one is selected at
-            the top of this page, because the vendors do not send the same shape of
-            video. Anam sends a tall portrait, which wants <b>Fill the stage</b>. Simli
-            sends a 512×512 square, and filling a portrait stage with a square crops the
-            head on every side — so it wants <b>Fit the whole frame</b>, and the bars at
-            the edges are the stage's own background rather than a fault. Zoom scales
-            after that; the anchor is the point held still while it scales, so set it on
-            the face.
+            Adjust how the avatar is positioned and scaled on screen. Saved separately
+            for each avatar provider.
           </p>
         </div>
       </div>

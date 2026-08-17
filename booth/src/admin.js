@@ -55,28 +55,43 @@ const DEFAULT_SETTINGS = {
     messageAr: "أعتذر، النظام ما يقدر يجاوب الحين. تفضلوا، أحد زملائي هنا في الجناح يسعده مساعدتكم.",
     messageEn: "I'm sorry — I can't answer right now. One of my colleagues here at the stand would be glad to help you.",
   },
-  elevenVoiceAr: "rPNcQ53R703tTmtue1AT",
+  elevenVoiceAr: "2bnoa3wtrtcUW41TrSJM",
   elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
   openaiVoice: "ash",
 };
 const TTS_DEFAULT_VOICES = {
   elevenlabs: {
-    male: { ar: "rPNcQ53R703tTmtue1AT", en: "wAGzRVkxKEs8La0lmdrE" },
+    // Mohammed Almansari (Saudi, male) for Arabic, Sully for English.
+    male: { ar: "2bnoa3wtrtcUW41TrSJM", en: "wAGzRVkxKEs8La0lmdrE" },
     female: { ar: "VwC51uc4PUblWEJSPzeo", en: "yj30vwTGJxSHezdAGsv9" },
   },
   openai: { male: "ash", female: "nova" },
 };
 const DEFAULT_ELEVENLABS_VOICE_NAMES = {
-  male: { ar: "Mohammed Almansari", en: "Mohammed Almansari" },
-  female: { ar: "Abrar Sabbah", en: "Abrar Sabbah" },
+  male: { ar: "Mohammed Almansari", en: "Sully" },
+  female: { ar: "Abrar Sabbah", en: "Jessa" },
 };
 const DEFAULT_TTS_ENGINE = "elevenlabs";
+
+/**
+ * Match on the name loosely, because the vendor's own names are not clean data. The
+ * account's "Mohammed Almansari" is returned with a leading space, and "Jessa" is
+ * returned as a sentence-long description — an exact === match misses both, falls
+ * through to the id below, and the booth quietly speaks in a different voice than the
+ * page claims. That is how the male default ended up being Mazen Lawand.
+ */
+function findVoiceIdByName(name) {
+  const want = name.trim().toLowerCase();
+  const all = elevenVoices ?? [];
+  const norm = (v) => (v.name ?? "").trim().toLowerCase();
+  return (all.find((v) => norm(v) === want) ?? all.find((v) => norm(v).startsWith(want)))?.id;
+}
 
 function resolveDefaultElevenVoicePair(gender) {
   const fallback = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
   const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
-  const ar = elevenVoices.find((v) => v.name === names.ar)?.id ?? fallback.ar;
-  const en = elevenVoices.find((v) => v.name === names.en)?.id ?? fallback.en;
+  const ar = findVoiceIdByName(names.ar) ?? fallback.ar;
+  const en = findVoiceIdByName(names.en) ?? fallback.en;
   return { ar, en };
 }
 
@@ -247,13 +262,13 @@ function showFraming() {
   $("stageFocusYOut").textContent = `${$("stageFocusY").value}% from the top`;
   $("framingHint").textContent = contain
     ? zoom > 1
-      ? "The whole frame fits, then scaled past the edges — the top and bottom may be cut off again."
-      : "The whole frame fits inside the stage. Nothing is cropped. Use this when the head is being cut off."
+      ? "The whole frame fits, then scales past the edges — the top and bottom may be cropped."
+      : "The whole frame fits inside the stage. Nothing is cropped — use this if the head is cut off."
     : zoom < 1
       ? "Filled and cropped, then pulled back inside the stage."
       : zoom > 1
-        ? "Filled and cropped, then pushed past the edges — crops more."
-        : "The video fills the stage, cropped to fit. Right for a tall portrait avatar.";
+        ? "Filled and cropped, then pushed past the edges."
+        : "The video fills the stage, cropped to fit.";
 }
 
 /**
