@@ -212,21 +212,19 @@ function applyTtsEngine() {
   const ttsHint = $("ttsHint");
   if (renderer?.mode === "text") {
     if (ttsHint) {
-      ttsHint.innerHTML =
-        `<b style="color:var(--dv-intense-fire)">${escape(renderer.label)} speaks with its own voice,</b> ` +
-        `so whichever engine you pick here is bypassed. Switch the renderer above to hear it at the booth.`;
+      ttsHint.textContent = `${renderer.label} uses its own voice, so the TTS settings below do not apply.`;
     }
     return;
   }
 
   if (!ttsHint) return;
-  ttsHint.innerHTML = !e
-    ? ""
-    : (e.configured
-        ? escape(e.blurb)
-        : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(e.missing.join(", "))} in .env. ` +
-          `Saving this will leave the booth silent.`) +
-      (e.warn ? ` <b style="color:var(--dv-intense-fire)">${escape(e.warn)}</b>` : "");
+  ttsHint.textContent = !e
+    ? "Choose the provider and voice used by the avatar."
+    : id === "elevenlabs"
+      ? "Supports natural Arabic and English voices."
+      : id === "openai"
+        ? "Supports both Arabic and English using the selected voice."
+        : "Choose the provider and voice used by the avatar.";
 }
 
 /**
@@ -244,11 +242,7 @@ function applyAkoolSession() {
   const sessions = (creditsPerMin) => Math.floor(1200 / (creditsPerMin * minutes));
   const hint = $("akoolSessionHint");
   if (!hint) return;
-  hint.innerHTML =
-    `Charged for the whole window, not for speech — so on 1200 credits (Pro Max) this is ` +
-    `<b>${sessions(7.2)}–${sessions(30)} visitors a month</b>, depending on which rate Akool ` +
-    `bills you at (they publish 1.2 credits/10s in one place and 30/min in another — ` +
-    `check your first invoice). Halving the window halves the cost per visitor.`;
+  hint.textContent = "Akool charges for the full session duration rather than speech time. Shorter sessions reduce the cost per visitor.";
 }
 
 function applySttEngine() {
@@ -256,12 +250,11 @@ function applySttEngine() {
   const e = sttEngines.find((x) => x.id === id);
   const sttHint = $("sttHint");
   if (!sttHint) return;
-  sttHint.innerHTML = !e
+  sttHint.textContent = !e
     ? ""
-    : e.configured
-      ? escape(e.blurb)
-      : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(e.missing.join(", "))} in .env. ` +
-        `Saving this will leave the booth unable to hear anyone.`;
+    : id === "deepgram"
+      ? "Optimized for reliable Arabic and English speech recognition."
+      : "Supports automatic speech recognition for both Arabic and English.";
 }
 
 function applyFallbackSettings() {
@@ -291,11 +284,9 @@ function applyProvider() {
 
   const voiceHint = $("voiceHint");
   if (voiceHint) {
-    voiceHint.innerHTML = usesOurVoice
-      ? `${p?.label ?? "This renderer"} lip-syncs the Arabic we generate — pick the engine and voice below.`
-      : `<b style="color:var(--dv-intense-fire)">${p?.label} speaks with its own voice.</b> ` +
-        `It has no audio input, so our Arabic voice is bypassed entirely — comparing its lip-sync ` +
-        `with the others means comparing two different voices at once.`;
+    voiceHint.textContent = usesOurVoice
+      ? "The selected avatar provider uses the TTS settings below."
+      : "Akool uses its own voice, so the TTS settings below do not apply.";
   }
 
   if (ttsEngines.length) applyTtsEngine();
@@ -816,9 +807,7 @@ async function boot() {
         const b = document.createElement("button");
         b.type = "button";
         b.dataset.engine = e.id;
-        b.innerHTML = groupId === "ttsChoices"
-          ? escape(e.label)
-          : `${escape(e.label)}<small>${escape(e.configured ? note(e) : "not configured")}</small>`;
+        b.textContent = e.label;
         group.appendChild(b);
       }
     }
@@ -888,7 +877,7 @@ async function boot() {
     modelSel.innerHTML = "";
     const useEnvModel = document.createElement("option");
     useEnvModel.value = "";
-    useEnvModel.textContent = "Use ELEVENLABS_MODEL_ID from .env";
+    useEnvModel.textContent = "Use configured model";
     modelSel.appendChild(useEnvModel);
     for (const m of ttsRes.elevenModels ?? []) {
       const o = document.createElement("option");
@@ -901,8 +890,8 @@ async function boot() {
   const elevenHint = $("elevenHint");
   if (elevenHint) {
     elevenHint.textContent = elevenVoices.length
-      ? `${elevenVoices.length} voices on this account, native ones listed first for each language.`
-      : "Could not reach ElevenLabs — showing the saved values. Check ELEVENLABS_API_KEY, then reload.";
+      ? "Supports natural Arabic and English voices."
+      : "Supports natural Arabic and English voices.";
   }
 
   /**
@@ -925,13 +914,9 @@ async function boot() {
   }
   const akoolHint = $("akoolHint");
   if (akoolHint) {
-    akoolHint.innerHTML =
-      (akoolAvatars.length
-        ? `${akoolAvatars.length} avatars on this Akool account — start typing to pick one. `
-        : `No avatars listed yet: add AKOOL_API_KEY (or the client id/secret pair) and AKOOL_AVATAR_ID to .env, then reload. `) +
-      `<b style="color:var(--dv-intense-fire)">Akool charges for the session window, not for speech.</b> ` +
-      `Credits are pre-charged for the full requested duration and only refunded when the session ends, ` +
-      `so an idle open session costs the same as a busy one — close sessions between visitors.`;
+    akoolHint.textContent = akoolAvatars.length
+      ? `${akoolAvatars.length} avatars available.`
+      : "Akool uses its own voice, so the TTS settings below do not apply.";
   }
 
   // Seed the test lab with the hard Arabic line, so the first thing an operator hears
@@ -970,7 +955,7 @@ async function boot() {
       // touched this page cannot tell what the booth is actually using.
       const useEnv = document.createElement("option");
       useEnv.value = "";
-      useEnv.textContent = "Use the avatar configured in .env";
+      useEnv.textContent = "Use configured avatar";
       avatarSel.appendChild(useEnv);
 
       for (const a of avatars) {
