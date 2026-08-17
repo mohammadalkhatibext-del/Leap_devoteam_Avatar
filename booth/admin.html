@@ -140,13 +140,13 @@
         <h2>Avatar</h2>
 
         <div class="field">
-          <label for="profileName">SETUP NAME</label>
+          <label for="profileName">Name of this setup</label>
           <input id="profileName" type="text" placeholder="Devoteam LEAP" />
-          <p class="hint">For internal reference only — visitors won’t see this.</p>
+          <p class="hint">Only for your own reference — visitors never see it.</p>
         </div>
 
         <div class="field">
-          <label>AVATAR PROVIDER</label>
+          <label>Avatar provider</label>
           <div class="choices" id="providerChoices">
             <button type="button" data-provider="anam" aria-pressed="true">Anam</button>
             <button type="button" data-provider="simli" aria-pressed="false">Simli</button>
@@ -162,20 +162,20 @@
                 defaulting to visible means a visible flash of the wrong vendor's fields
                 on every load. -->
             <div class="field" id="anamFields" hidden>
-             <label for="avatarId">ANAM AVATAR</label>
+             <label for="avatarId">Avatar</label>
              <select id="avatarId"></select>
-             <p class="hint" id="avatarHint">Choose the configured Anam avatar.</p>
+             <p class="hint" id="avatarHint">Choose the Anam avatar configured for this stand.</p>
             </div>
 
             <div class="grid2" id="simliFields" hidden>
              <div class="field">
-               <label for="simliFaceId">SIMLI AVATAR</label>
-               <input id="simliFaceId" type="text" placeholder="Using configured avatar" />
+               <label for="simliFaceId">Simli face ID</label>
+               <input id="simliFaceId" type="text" placeholder="Using configured Face ID" />
              </div>
              <div class="field">
-               <label for="simliModel">SIMLI LIP-SYNC MODEL</label>
+               <label for="simliModel">Simli lip-sync model</label>
                <select id="simliModel">
-                 <option value="fasttalk">FastTalk</option>
+                 <option value="fasttalk">fasttalk</option>
                  <option value="artalk">artalk</option>
                </select>
              </div>
@@ -184,39 +184,54 @@
             <div id="akoolFields" hidden>
              <div class="grid2">
                <div class="field">
-                 <label for="akoolAvatarId">AKOOL AVATAR</label>
+                 <label for="akoolAvatarId">Akool avatar</label>
+                 <!-- A datalist rather than a select: the list only populates once a key
+                       exists, and until then an operator still has to be able to paste an
+                       id straight from the Akool dashboard. -->
                  <input
                    id="akoolAvatarId"
                    type="text"
                    list="akoolAvatarList"
-                   placeholder="Using configured avatar"
+                   placeholder="Using configured Avatar ID"
                  />
                  <datalist id="akoolAvatarList"></datalist>
                </div>
                <div class="field">
-                 <label for="akoolVoiceId">AKOOL VOICE</label>
-                 <input id="akoolVoiceId" type="text" placeholder="Using configured voice" />
+                 <label for="akoolVoiceId">Akool voice ID</label>
+                 <input id="akoolVoiceId" type="text" placeholder="Using configured Voice ID" />
                </div>
              </div>
 
              <div class="field">
-               <label>SESSION DURATION</label>
+               <label>How long each session is opened for</label>
                <div class="choices" id="akoolSessionChoices">
                  <button type="button" data-seconds="120">2 minutes<small>cheapest</small></button>
                  <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
                  <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
                </div>
-               <p class="hint" id="akoolSessionHint">Akool charges for the full session duration rather than speech time. Shorter sessions reduce the cost per visitor.</p>
+               <p class="hint" id="akoolSessionHint">Pick the session length that fits your booth traffic.</p>
              </div>
              <div class="field">
                <label class="toggle" for="releaseAvatarWhenIdle">
                  <input id="releaseAvatarWhenIdle" type="checkbox" />
-                 <span>CLOSE SESSION WHEN INACTIVE</span>
+                 <span>Close the session when the stand goes quiet</span>
                </label>
-               <p class="hint">Ends the session after the idle timeout. A new session starts automatically when the next visitor interacts.</p>
+               <p class="hint">
+                 Ends the session after the idle timeout above instead of holding it open
+                 for the next visitor, so an empty stand costs nothing. The next question
+                 reconnects automatically — a few seconds, spent while the visitor is
+                 still talking. Leave this off for Anam and Simli, which are not billed
+                 this way.
+                 <b style="color: var(--dv-intense-fire)"
+                   >Run <code>npm run check:akool</code> before trusting this.</b
+                 >
+                 It only saves money if Akool refunds the unused window on close, which
+                 that script measures against your real balance. If it does not refund,
+                 leave this off and just ask for a shorter window instead.
+               </p>
              </div>
 
-             <p class="hint" id="akoolHint">Akool uses its own voice, so the TTS settings below do not apply.</p>
+             <p class="hint" id="akoolHint">Akool settings are kept in the booth configuration and only used when that provider is selected.</p>
             </div>
 
             <p class="hint" id="voiceHint">The avatar provider decides which voice and settings are active for the visitor experience.</p>
@@ -227,19 +242,22 @@
       <!-- --------------------------------------------------------- sound -->
       <div class="card section" id="ttsCard">
         <h2>Text to Speech (TTS)</h2>
-        <p class="lead">Choose the voice provider and voice used by the avatar.</p>
+        <p class="lead">
+          Pick the voice provider and style. The booth uses the matching default voice
+          for both languages unless you open Advanced Settings.
+        </p>
 
         <div class="field">
-          <label>VOICE PROVIDER</label>
+          <label>Voice provider</label>
           <div class="choices" id="ttsChoices">
-            <button type="button" data-engine="elevenlabs" aria-pressed="true">ElevenLabs</button>
-            <button type="button" data-engine="openai" aria-pressed="false">OpenAI</button>
+            <button type="button" data-engine="elevenlabs" aria-pressed="true">ElevenLabs<small>ready</small></button>
+            <button type="button" data-engine="openai" aria-pressed="false">OpenAI<small>ready</small></button>
           </div>
-          <p class="hint" id="ttsHint">Choose the provider and voice used by the avatar.</p>
+          <p class="hint" id="ttsHint">A native voice per language. This is the default voice setup for the booth.</p>
         </div>
 
         <div class="field" id="ttsGenderFields">
-          <label>VOICE GENDER</label>
+          <label>Voice</label>
           <div class="choices" id="ttsGenderChoices">
             <button type="button" data-gender="male" aria-pressed="true">Male</button>
             <button type="button" data-gender="female">Female</button>
@@ -273,16 +291,17 @@
                </div>
              </div>
              <div class="field">
-               <label for="elevenModel">MODEL</label>
+               <label for="elevenModel">ElevenLabs model</label>
                <select id="elevenModel"></select>
+               <p class="hint">Compare model speed and tone before you save your choice.</p>
              </div>
-             <p class="hint" id="elevenHint">Supports natural Arabic and English voices.</p>
+             <p class="hint" id="elevenHint">A native voice per language. Generally the most natural Arabic voice in this setup.</p>
             </div>
 
             <div class="field" id="openaiVoiceFields" hidden>
-             <label for="openaiVoice">VOICE</label>
+             <label for="openaiVoice">OpenAI voice</label>
              <select id="openaiVoice"></select>
-             <p class="hint">Supports both Arabic and English using the selected voice.</p>
+             <p class="hint">These voices are English-first, so test the Arabic carefully.</p>
             </div>
           </div>
         </div>
@@ -300,10 +319,10 @@
                <button type="button" data-lang="en">English</button>
              </div>
              <div class="spacer"></div>
-            <button type="button" id="speakOne" class="secondary">▶ Play Selected Voice</button>
-             <button type="button" id="speakAll">Compare Providers</button>
+             <button type="button" id="speakOne" class="secondary">▶ Hear selected engine</button>
+             <button type="button" id="speakAll">Compare every engine</button>
             </div>
-            <p class="hint">Preview only — this does not affect the booth.</p>
+            <p class="hint">This only plays for you — it is not saved to the booth.</p>
             <div id="ttsResults" class="results"></div>
           </div>
         </div>
@@ -311,26 +330,26 @@
 
       <div class="card section" id="sttCard">
         <h2>Speech to Text (STT)</h2>
-        <p class="lead">Choose the speech recognition provider for visitor questions.</p>
+        <p class="lead">Choose the engine that listens for visitor questions.</p>
 
         <div class="field">
-          <label>SPEECH RECOGNITION PROVIDER</label>
+          <label>Listening engine</label>
           <div class="choices" id="sttChoices">
-            <button type="button" data-engine="deepgram" aria-pressed="true">Deepgram</button>
-            <button type="button" data-engine="openai" aria-pressed="false">OpenAI</button>
+            <button type="button" data-engine="deepgram" aria-pressed="true">Deepgram<small>ready</small></button>
+            <button type="button" data-engine="openai" aria-pressed="false">OpenAI<small>ready</small></button>
           </div>
-          <p class="hint" id="sttHint">Optimized for reliable Arabic and English speech recognition.</p>
+          <p class="hint" id="sttHint">Two language requests in parallel is the most reliable Arabic setup for this booth.</p>
         </div>
 
         <div class="field testlab">
           <button type="button" class="advanced-toggle" id="sttTestToggle" aria-expanded="false">
-            <span>Test Speech Recognition</span>
+            <span>Try Your Voice</span>
             <span class="chevron">▾</span>
           </button>
           <div class="advanced-panel" id="sttTestPanel" hidden>
             <div class="testrow">
              <button type="button" id="recBtn" class="secondary">● Record a question</button>
-             <span class="hint" id="recHint" style="margin:0">Record a question to compare both providers.</span>
+             <span class="hint" id="recHint" style="margin:0">Records from this machine and compares the configured engines.</span>
             </div>
             <div id="sttResults" class="results"></div>
           </div>
@@ -340,10 +359,13 @@
       <!-- ------------------------------------------------------ behaviour -->
       <div class="card section">
         <h2>How it talks</h2>
-        <p class="lead">Keep responses concise and natural for a fast-paced booth experience.</p>
+        <p class="lead">
+          Visitors are standing up in a loud hall. Shorter answers get listened to;
+          long ones get walked away from.
+        </p>
 
         <div class="field">
-          <label>ANSWER LENGTH</label>
+          <label>Answer length</label>
           <!-- Seconds are measured out loud on the shipping Arabic voice, not derived
                from a reading rate. Arabic through ElevenLabs runs about 1.4 words a
                second, well under the 2.2 these buttons used to assume — they promised
@@ -353,14 +375,18 @@
             <button type="button" data-words="35">Normal<small>~25 seconds</small></button>
             <button type="button" data-words="55">Detailed<small>~39 seconds</small></button>
           </div>
+          <p class="hint" id="lengthHint">Measured, not guessed: the Arabic voice speaks about two words per second.</p>
         </div>
 
         <div class="field">
           <label class="toggle" for="greetFirstAnswer">
             <input id="greetFirstAnswer" type="checkbox" />
-            <span>GREET EACH NEW VISITOR</span>
+            <span>Greet the first time each visitor speaks</span>
           </label>
-          <p class="hint">Greet each visitor once at the start of their conversation.</p>
+          <p class="hint">
+            Greets once per visitor, not once per answer. Turn this off if the stand is
+            busy and you want answers only.
+          </p>
         </div>
 
         <div class="field">
@@ -385,9 +411,12 @@
         </div>
 
         <div class="field">
-          <label for="idleResetMinutes">RESET CONVERSATION AFTER INACTIVITY</label>
+          <label for="idleResetMinutes">Start fresh after this many minutes of silence</label>
           <input id="idleResetMinutes" type="number" min="1" max="60" />
-          <p class="hint">After this period of inactivity, the conversation resets automatically for the next visitor.</p>
+          <p class="hint">
+            Visitors walk away without pressing "new visitor". After this long the
+            conversation clears itself, so the next person doesn't inherit it.
+          </p>
         </div>
       </div>
 
@@ -465,27 +494,27 @@
         <p class="lead">Add facts the assistant should know, and guidance on how it should respond.</p>
 
         <button type="button" class="advanced-toggle" id="knowledgeToggle" aria-expanded="false">
-          <span>Edit Knowledge &amp; Instructions</span>
+          <span>Knowledge &amp; Instructions</span>
           <span class="chevron">▾</span>
         </button>
 
         <div class="advanced-panel" id="knowledgePanel" hidden>
           <div class="field">
-            <label for="extraKnowledge">EXTRA FACTS FOR THIS EVENT</label>
+            <label for="extraKnowledge">Extra Facts for This Event</label>
             <textarea
               id="extraKnowledge"
               placeholder="Our stand is in Hall 2, number H2-14.&#10;The live demo runs at 11:00 and 15:00 each day.&#10;Ask for Osama if a visitor wants a meeting."
             ></textarea>
-            <p class="hint">Event-specific information the assistant should know.</p>
+            <p class="hint">Short facts the assistant should know while on this stand.</p>
           </div>
 
           <div class="field">
-            <label for="customInstructions">ASSISTANT INSTRUCTIONS</label>
+            <label for="customInstructions">Assistant Instructions</label>
             <textarea
               id="customInstructions"
               placeholder="Mention our Vision 2030 work whenever the public sector comes up.&#10;Don't offer to book meetings — take the visitor's name instead."
             ></textarea>
-            <p class="hint">Guidance for how the assistant should respond to visitors.</p>
+            <p class="hint">How the assistant should behave and respond in conversations.</p>
           </div>
         </div>
       </div>
@@ -504,15 +533,15 @@
           <div class="field">
             <label class="toggle" for="fallbackEnabled">
               <input id="fallbackEnabled" type="checkbox" />
-              <span>ENABLE FALLBACK RESPONSE</span>
+              <span>Enable fallback response</span>
             </label>
           </div>
 
           <div class="field" id="fallbackModeField">
-            <label>HOW IT RESPONDS</label>
+            <label>How it responds</label>
             <div class="choices" id="fallbackMode">
-              <button type="button" data-mode="speak">Speak &amp; Display<small>Speak and display the fallback message.</small></button>
-              <button type="button" data-mode="text">Display Only<small>Display the fallback message without speaking.</small></button>
+              <button type="button" data-mode="speak">Speak &amp; Display<small>Avatar says the line and shows it</small></button>
+              <button type="button" data-mode="text">Display Only<small>Show the line without speaking</small></button>
             </div>
           </div>
 
@@ -527,7 +556,7 @@
             </div>
           </div>
 
-          <p class="hint">Keep the message brief and direct the visitor to a staff member.</p>
+          <p class="hint">Keep it short and point the visitor to a person.</p>
         </div>
       </div>
 
