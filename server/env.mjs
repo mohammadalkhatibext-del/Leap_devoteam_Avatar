@@ -76,6 +76,45 @@ export function loadEnv(envPath) {
 }
 
 /**
+ * The booth's own variables. Narrow on purpose: the repair below rewrites values, and
+ * it has no business touching PATH or anything else the host put in the environment.
+ */
+const OURS = /^(AKOOL|ANAM|ANTHROPIC|AZURE_SPEECH|BOOTH|CLAUDE|DEEPGRAM|ELEVENLABS|HEYGEN|OPENAI|SIMLI|TAVUS|TTS)_/;
+
+/**
+ * Repair variables that arrived with a newline in the middle, and say so.
+ *
+ * A dashboard variable field takes a multi-line paste without complaint, so two lines
+ * of a .env pasted into one box become one variable whose value is
+ * `sk-…\nOPENAI_STT_MODEL=gpt-4o-transcribe`. Nothing notices until the value reaches a
+ * request header, and then it fails as `Headers.append: … is an invalid header value` —
+ * from inside a fetch, naming neither the variable nor the dashboard, which is a long
+ * way from "you pasted two things into one box".
+ *
+ * A header value cannot contain a newline, so the first line is the only reading that
+ * could ever have worked: take it, so the booth runs, and report it loudly, because the
+ * dashboard is still wrong and the second variable is still unset. `.trim()` at the call
+ * sites does not catch this — the newline is in the middle, not at the ends.
+ *
+ * @returns {Array<{key: string, alsoFound: string|null}>}
+ */
+export function repairMultilineValues(env = process.env) {
+  const repaired = [];
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== "string" || !/[\r\n]/.test(value) || !OURS.test(key)) continue;
+
+    const [first, ...rest] = value.split(/\r?\n/);
+    env[key] = first.trim();
+
+    // The tail is usually the variable that should have had its own box. Naming it turns
+    // "something is malformed" into the exact edit to make.
+    const strayKey = rest.join("\n").match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/)?.[1] ?? null;
+    repaired.push({ key, alsoFound: strayKey });
+  }
+  return repaired;
+}
+
+/**
  * Load, and print what got overruled.
  *
  * Values are shown because the key name alone does not tell you anything actionable —
@@ -85,6 +124,17 @@ export function loadEnv(envPath) {
  */
 export function loadEnvAndReport(envPath, log = console.warn) {
   const shadowed = loadEnv(envPath);
+
+  // After loading, so it covers both a mis-pasted dashboard variable and a mangled file.
+  for (const { key, alsoFound } of repairMultilineValues()) {
+    log(`  ${key} arrived with a line break in it — using the first line only.`);
+    log(
+      alsoFound
+        ? `    The rest looks like ${alsoFound}=…, pasted into the same box. Give ${alsoFound} its own variable — it is NOT set right now.`
+        : `    Check where it is set: everything after the first line was discarded.`,
+    );
+  }
+
   if (!shadowed.length) return shadowed;
 
   log(

@@ -296,7 +296,9 @@ all** — container or cloud host. `fixSimliClientCasing` in `booth/vite.config.
 around it; remove that plugin once the vendor ships a fixed `dist`.
 
 Full event deployment — cloud primary, booth PC fallback, TLS, kiosk flags, the
-runbook — is in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+runbook — is in the `DEPLOYMENT_*.md` runbooks, which are kept with the booth rather
+than in this repository: they name the hosts and paths of a specific stand, and this
+repository is public. Ask the team for the current one.
 
 ---
 
@@ -315,7 +317,7 @@ runbook — is in [`DEPLOYMENT.md`](./DEPLOYMENT.md).
   the same account (`bba96e80-…`) — switching means changing **both**, or the booth
   shows a woman speaking with a man's voice.
 - **The operator page has no authentication.** Fine on `localhost`; on any public URL
-  it needs a basic-auth gate — see `DEPLOYMENT.md` §2.5.
+  it needs a basic-auth gate — see the deployment runbook kept with the booth.
 - **Two renderers are reachable** (Anam and Simli). HeyGen and Tavus are still
   card-blocked. Simli unblocked on 2026-08-09, so there is now a real second vendor
   rather than only the `STRATEGY.md` §5 fallback.
