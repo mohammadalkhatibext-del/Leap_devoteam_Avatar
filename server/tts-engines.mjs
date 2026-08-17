@@ -237,7 +237,7 @@ export const TTS_ENGINES = {
   },
 };
 
-export const DEFAULT_TTS_ENGINE = "edge";
+export const DEFAULT_TTS_ENGINE = "elevenlabs";
 
 /**
  * The ElevenLabs voices this key can actually use, for the admin picker.

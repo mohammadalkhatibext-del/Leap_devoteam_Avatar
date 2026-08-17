@@ -31,6 +31,26 @@ let providers = [];
 let ttsEngines = [];
 let sttEngines = [];
 let elevenVoices = [];
+const TTS_DEFAULT_VOICES = {
+  elevenlabs: {
+    male: { ar: "rPNcQ53R703tTmtue1AT", en: "wAGzRVkxKEs8La0lmdrE" },
+    female: { ar: "VwC51uc4PUblWEJSPzeo", en: "yj30vwTGJxSHezdAGsv9" },
+  },
+  openai: { male: "ash", female: "nova" },
+};
+const DEFAULT_ELEVENLABS_VOICE_NAMES = {
+  male: { ar: "Mohammed Almansari", en: "Mohammed Almansari" },
+  female: { ar: "Abrar Sabbah", en: "Abrar Sabbah" },
+};
+const DEFAULT_TTS_ENGINE = "elevenlabs";
+
+function resolveDefaultElevenVoicePair(gender) {
+  const fallback = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
+  const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
+  const ar = elevenVoices.find((v) => v.name === names.ar)?.id ?? fallback.ar;
+  const en = elevenVoices.find((v) => v.name === names.en)?.id ?? fallback.en;
+  return { ar, en };
+}
 
 /* ------------------------------------------------------------ form binding */
 
@@ -53,12 +73,58 @@ const TEXT_FIELDS = [
   "akoolVoiceId",
 ];
 
+function defaultTtsEngine() {
+  const available = (ttsEngines ?? []).map((e) => e.id);
+  const fallback = DEFAULT_TTS_ENGINE;
+  return available.includes(fallback) ? fallback : (available[0] ?? fallback);
+}
+
+function ttsGenderForSettings(s = read()) {
+  const engine = s.ttsEngine || defaultTtsEngine();
+  if (engine === "openai") {
+    return s.openaiVoice === "nova" ? "female" : "male";
+  }
+  if (engine === "elevenlabs") {
+    const male = TTS_DEFAULT_VOICES.elevenlabs.male;
+    const female = TTS_DEFAULT_VOICES.elevenlabs.female;
+    const arMatch = s.elevenVoiceAr === female.ar || s.elevenVoiceAr === male.ar;
+    const enMatch = s.elevenVoiceEn === female.en || s.elevenVoiceEn === male.en;
+    if (arMatch && enMatch) {
+      return s.elevenVoiceAr === female.ar && s.elevenVoiceEn === female.en ? "female" : "male";
+    }
+    return "male";
+  }
+  return "male";
+}
+
+function applyTtsGender(value) {
+  const engine = selected("ttsChoices", "engine") || defaultTtsEngine();
+  if (engine === "openai") {
+    $("openaiVoice").value = TTS_DEFAULT_VOICES.openai[value] ?? TTS_DEFAULT_VOICES.openai.male;
+    return;
+  }
+  if (engine === "elevenlabs") {
+    const voices = resolveDefaultElevenVoicePair(value);
+    $("elevenVoiceAr").value = voices.ar;
+    $("elevenVoiceEn").value = voices.en;
+  }
+}
+
 function read() {
   const s = {};
   for (const id of TEXT_FIELDS) s[id] = $(id).value;
   s.avatarProvider = selected("providerChoices", "provider") || "anam";
-  s.ttsEngine = selected("ttsChoices", "engine") || "edge";
+  s.ttsEngine = selected("ttsChoices", "engine") || defaultTtsEngine();
   s.sttEngine = selected("sttChoices", "engine") || "deepgram";
+  const gender = selected("ttsGenderChoices", "gender") || ttsGenderForSettings(s);
+  if (s.ttsEngine === "openai") {
+    s.openaiVoice = TTS_DEFAULT_VOICES.openai[gender] ?? "ash";
+  }
+  if (s.ttsEngine === "elevenlabs") {
+    const mapped = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
+    s.elevenVoiceAr = mapped.ar;
+    s.elevenVoiceEn = mapped.en;
+  }
   s.idleResetMinutes = Number(s.idleResetMinutes) || 5;
   s.answerWords = Number(selected("lengthChoices", "words")) || 35;
   s.akoolSessionSeconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
@@ -99,11 +165,24 @@ function write(s) {
   $("fallbackEnabled").checked = !!s.fallback?.enabled;
   $("fallbackAr").value = s.fallback?.messageAr ?? "";
   $("fallbackEn").value = s.fallback?.messageEn ?? "";
+  applyFallbackSettings();
   select("lengthChoices", "words", nearestLength(s.answerWords));
   select("fallbackMode", "mode", s.fallback?.mode ?? "speak");
   select("providerChoices", "provider", s.avatarProvider ?? "anam");
-  select("ttsChoices", "engine", s.ttsEngine ?? "edge");
+  const ttsValue = (s.ttsEngine && ttsEngines.some((e) => e.id === s.ttsEngine)) ? s.ttsEngine : defaultTtsEngine();
+  select("ttsChoices", "engine", ttsValue);
   select("sttChoices", "engine", s.sttEngine ?? "deepgram");
+  const currentTtsEngine = selected("ttsChoices", "engine") || defaultTtsEngine();
+  const gender = ttsGenderForSettings({ ...s, ttsEngine: currentTtsEngine });
+  if (currentTtsEngine === "openai") {
+    $("openaiVoice").value = s.openaiVoice || TTS_DEFAULT_VOICES.openai[gender];
+  }
+  if (currentTtsEngine === "elevenlabs") {
+    const mapped = resolveDefaultElevenVoicePair(gender);
+    $("elevenVoiceAr").value = s.elevenVoiceAr || mapped.ar;
+    $("elevenVoiceEn").value = s.elevenVoiceEn || mapped.en;
+  }
+  select("ttsGenderChoices", "gender", gender);
   applyProvider();
   applyTtsEngine();
   applySttEngine();
@@ -156,15 +235,17 @@ function showFraming() {
  * of defect as leaving the voice pickers visible under Akool.
  */
 function applyTtsEngine() {
-  const id = selected("ttsChoices", "engine") || "edge";
-  const e = ttsEngines.find((x) => x.id === id);
+  const id = selected("ttsChoices", "engine") || defaultTtsEngine();
+  const e = ttsEngines.find((x) => x.id === id) || ttsEngines[0];
 
   $("microsoftVoiceFields").hidden = e?.voiceMode !== "microsoft";
   $("elevenVoiceFields").hidden = e?.voiceMode !== "pair";
+  $("voiceEnField").hidden = e?.voiceMode !== "microsoft";
   $("openaiVoiceFields").hidden = id !== "openai";
+  $("ttsGenderFields").hidden = !["elevenlabs", "openai"].includes(id);
+  const gender = selected("ttsGenderChoices", "gender") || (id === "openai" ? "male" : "male");
+  select("ttsGenderChoices", "gender", gender);
 
-  // If the renderer supplies its own voice, none of this reaches a visitor. Say so
-  // here rather than letting an operator tune a voice that is never used.
   const renderer = providers.find((x) => x.id === (selected("providerChoices", "provider") || "anam"));
   if (renderer?.mode === "text") {
     $("ttsHint").innerHTML =
@@ -211,6 +292,12 @@ function applySttEngine() {
       ? escape(e.blurb)
       : `<b style="color:var(--dv-poppy)">Not configured.</b> Missing ${escape(e.missing.join(", "))} in .env. ` +
         `Saving this will leave the booth unable to hear anyone.`;
+}
+
+function applyFallbackSettings() {
+  const enabled = $("fallbackEnabled").checked;
+  $("fallbackModeField").hidden = !enabled;
+  $("fallbackMessages").hidden = !enabled;
 }
 
 /**
@@ -269,9 +356,27 @@ function selected(groupId, key) {
 }
 
 function select(groupId, key, value) {
-  for (const b of $(groupId).children) {
+  const group = $(groupId);
+  if (!group) return;
+  for (const b of group.children) {
     b.setAttribute("aria-pressed", String(b.dataset[key] === String(value)));
   }
+}
+
+function bindCollapse(buttonId, panelId) {
+  const btn = $(buttonId);
+  const panel = $(panelId);
+  if (!btn || !panel) return;
+  const sync = () => {
+    const expanded = !panel.hidden;
+    btn.setAttribute("aria-expanded", String(expanded));
+    btn.querySelector(".chevron").textContent = expanded ? "▴" : "▾";
+  };
+  btn.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    sync();
+  });
+  sync();
 }
 
 for (const groupId of [
@@ -279,6 +384,7 @@ for (const groupId of [
   "fallbackMode",
   "providerChoices",
   "ttsChoices",
+  "ttsGenderChoices",
   "sttChoices",
   "akoolSessionChoices",
   "modelChoices",
@@ -291,7 +397,17 @@ for (const groupId of [
     for (const b of $(groupId).children) b.setAttribute("aria-pressed", String(b === btn));
     if (groupId === "fitChoices") showFraming();
     if (groupId === "providerChoices") applyProvider();
-    if (groupId === "ttsChoices") applyTtsEngine();
+    if (groupId === "ttsChoices") {
+      applyTtsEngine();
+      const gender = selected("ttsGenderChoices", "gender") || "male";
+      applyTtsGender(gender);
+    }
+    if (groupId === "ttsGenderChoices") {
+      applyTtsGender(btn.dataset.gender);
+      renderPreview();
+      dirty();
+      return;
+    }
     if (groupId === "sttChoices") applySttEngine();
     if (groupId === "akoolSessionChoices") applyAkoolSession();
     renderPreview();
@@ -306,6 +422,13 @@ for (const id of ["stageZoom", "stageFocusY"]) {
   $(id).addEventListener("input", showFraming);
   $(id).addEventListener("change", dirty);
 }
+
+bindCollapse("providerAdvancedToggle", "providerAdvancedPanel");
+bindCollapse("ttsAdvancedToggle", "ttsAdvancedPanel");
+bindCollapse("ttsTestToggle", "ttsTestPanel");
+bindCollapse("sttTestToggle", "sttTestPanel");
+bindCollapse("fallbackToggle", "fallbackPanel");
+bindCollapse("knowledgeToggle", "knowledgePanel");
 
 // The test-lab language is not a setting — it decides which line gets synthesised
 // here and nothing else, so it must never mark the form dirty or the operator would
@@ -328,52 +451,45 @@ function renderPreview() {
   // operator an answer would run half as long as it does.
   const seconds = Math.round(words / 1.4);
   const av = [...$("avatarId").options].find((o) => o.value === s.avatarId)?.textContent;
-  const p = providers.find((x) => x.id === s.avatarProvider);
+  const p = providers.find((x) => x.id === s.avatarProvider) ?? providers[0];
+  const tts = ttsEngines.find((x) => x.id === s.ttsEngine) ?? ttsEngines[0];
+  const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
+  const providerName = p?.label ?? "Anam";
 
-  const tts = ttsEngines.find((x) => x.id === s.ttsEngine);
-  const stt = sttEngines.find((x) => x.id === s.sttEngine);
+  const providerLine = `Visitors meet the <b>${escape(providerName)}</b> avatar.`;
 
-  // What the operator needs from this line is which voice a visitor will actually
-  // hear, and that depends on the engine — the Microsoft engines read the two
-  // language pickers, the multilingual ones read a single field the others ignore.
-  // On ElevenLabs the override fields are usually empty, and printing "—" there would
-  // report the booth as having no voice while it is in fact using the gender pair.
-  // Resolve the same way the server does: override, then pair.
-  const pair = ELEVEN_PAIRS[s.voiceGender] ?? ELEVEN_PAIRS.male;
-  const spokenBy =
-    tts?.voiceMode === "microsoft"
-      ? `<b>${escape(shortVoice(s.voiceAr))}</b> in Arabic and <b>${escape(shortVoice(s.voiceEn))}</b> in English`
-      : tts?.voiceMode === "pair"
-        ? `<b>${escape(s.elevenVoiceAr ? elevenName(s.elevenVoiceAr) : pair.ar)}</b> in Arabic and ` +
-          `<b>${escape(s.elevenVoiceEn ? elevenName(s.elevenVoiceEn) : pair.en)}</b> in English`
-        : `<b>${escape(s.openaiVoice)}</b> in both languages`;
+  let voiceLine = `Voice is provided by <b>${escape(tts?.label ?? s.ttsEngine)}</b>.`;
+  if (p?.mode === "text") {
+    voiceLine = `Voice is provided by <b>${escape(providerName)}</b> and the external TTS engine is bypassed.`;
+  } else if (tts?.id === "elevenlabs") {
+    const gender = selected("ttsGenderChoices", "gender") || "male";
+    const arName = gender === "female" ? "Abrar Sabbah" : "Mohammed Almansari";
+    const enName = gender === "female" ? "Abrar Sabbah" : "Mohammed Almansari";
+    voiceLine = `Voice is provided by <b>ElevenLabs</b>, using <b>${escape(arName)}</b> for Arabic and <b>${escape(enName)}</b> for English.`;
+  } else if (tts?.id === "openai") {
+    const gender = selected("ttsGenderChoices", "gender") || "male";
+    const name = gender === "female" ? "Nova" : "Ash";
+    voiceLine = `Voice is provided by <b>OpenAI</b>, using <b>${escape(name)}</b> for both Arabic and English.`;
+  } else if (tts?.voiceMode === "microsoft") {
+    voiceLine = `Voice is provided by <b>${escape(tts.label ?? "Microsoft")}</b>.`;
+  }
 
-  const who =
-    p?.mode === "text"
-      ? `Visitors meet an <b>${escape(p.label)}</b> avatar, speaking <b>${escape(p.label)}'s own voice</b> — our voice engine is not used.`
-      : `Visitors meet <b>${escape(av || "—")}</b> via <b>${escape(p?.label ?? "Anam")}</b>, speaking
-         ${spokenBy} through <b>${escape(tts?.label ?? s.ttsEngine)}</b>.`;
+  const fallbackLine = s.fallback.enabled
+    ? `${s.fallback.mode === "speak" ? "Speak & Display" : "Display Only"}`
+    : "Disabled";
 
-  $("preview").innerHTML = `
-    ${who}
-    It listens with <b>${escape(stt?.label ?? s.sttEngine)}</b>.
-    Answers run about <b>${seconds} seconds</b>, and it
-    ${s.greetFirstAnswer ? "greets each visitor once" : "skips greetings"}.
-    ${
-      s.requireTapToStart
-        ? `The avatar stays off until someone touches the screen, and closes itself again after
-           <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
-        : `<b>The avatar connects on load and stays connected</b>, closing only after
-           <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
-    }
-    The conversation clears itself after <b>${s.idleResetMinutes} minutes</b> of silence.
-    ${
-      s.fallback.enabled
-        ? `If an answer fails it ${s.fallback.mode === "speak" ? "says the fallback out loud" : "shows the fallback as a subtitle"}.`
-        : `<b>If an answer fails it says nothing</b> — the screen will just sit there.`
-    }
-    ${s.extraKnowledge.trim() ? `It also knows <b>${s.extraKnowledge.trim().split("\n").filter(Boolean).length} extra fact(s)</b> you added.` : ""}
-  `;
+  const sessionLine = `Response time is about <b>${seconds} seconds</b>.`;
+  const fallbackSentence = s.fallback.enabled
+    ? `Failed answers use <b>${fallbackLine}</b> as the fallback response.`
+    : `Fallback response is <b>${fallbackLine}</b>.`;
+
+  $("preview").innerHTML = [
+    providerLine,
+    voiceLine,
+    `Listening uses <b>${escape(stt?.label ?? s.sttEngine)}</b>.`,
+    sessionLine,
+    fallbackSentence,
+  ].join(" ");
 }
 
 const escape = (v) =>
@@ -488,7 +604,7 @@ async function compareTts(engines) {
   }
 }
 
-$("speakOne").onclick = () => compareTts([selected("ttsChoices", "engine") || "edge"]);
+$("speakOne").onclick = () => compareTts([selected("ttsChoices", "engine") || defaultTtsEngine()]);
 $("speakAll").onclick = () => compareTts(undefined);
 
 /* --- microphone -------------------------------------------------------- */
@@ -583,7 +699,11 @@ for (const id of [
     renderPreview();
     dirty();
   });
-  $(id).addEventListener("change", renderPreview);
+  $(id).addEventListener("change", () => {
+    if (id === "fallbackEnabled") applyFallbackSettings();
+    renderPreview();
+    dirty();
+  });
 }
 
 /* ------------------------------------------------------------------ actions */
@@ -609,12 +729,11 @@ $("save").onclick = async () => {
 
 $("revert").onclick = () => {
   if (saved) write(saved);
-  status("Reverted to the last saved settings");
+  status("Discarded unsaved changes");
 };
 
 $("restore").onclick = async () => {
-  // No confirm dialog: this only resets settings, the knowledge base is untouched,
-  // and Undo brings the previous values straight back.
+  if (!window.confirm("Restore all settings to the tested defaults?")) return;
   const res = await fetch("/api/settings/reset", { method: "POST" });
   saved = await res.json();
   write(saved);
@@ -650,11 +769,9 @@ async function boot() {
 
   voices = voicesRes.voices ?? [];
   providers = providersRes.providers ?? [];
-  ttsEngines = ttsRes.engines ?? [];
+  ttsEngines = (ttsRes.engines ?? []).filter((e) => ["elevenlabs", "openai"].includes(e.id));
   sttEngines = sttRes.engines ?? [];
 
-  // Engine pickers. The subtitle is the honest one-liner from the registry, so an
-  // engine that cannot run says so on its own button instead of failing at a booth.
   const engineButtons = (groupId, list, note) => {
     const group = $(groupId);
     group.innerHTML = "";
@@ -662,7 +779,9 @@ async function boot() {
       const b = document.createElement("button");
       b.type = "button";
       b.dataset.engine = e.id;
-      b.innerHTML = `${escape(e.label)}<small>${escape(e.configured ? note(e) : "not configured")}</small>`;
+      b.innerHTML = groupId === "ttsChoices"
+        ? escape(e.label)
+        : `${escape(e.label)}<small>${escape(e.configured ? note(e) : "not configured")}</small>`;
       group.appendChild(b);
     }
   };
@@ -782,12 +901,7 @@ async function boot() {
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.provider = p.id;
-    const note = p.configured
-      ? p.mode === "text"
-        ? "own voice (not ours)"
-        : `our voice @ ${p.sampleRate / 1000} kHz`
-      : "not configured";
-    b.innerHTML = `${escape(p.label)}<small>${escape(note)}</small>`;
+    b.textContent = p.label;
     group.appendChild(b);
   }
 

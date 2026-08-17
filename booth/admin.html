@@ -56,6 +56,15 @@
          The smaller size already carries the demotion without help from opacity. */
       .choices button[aria-pressed="true"] small { color: var(--on-accent); }
 
+      .advanced-toggle {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        width: 100%; min-height: 36px; padding: 8px 12px; margin-top: 12px;
+        border: 1px solid var(--border); border-radius: 999px; background: transparent;
+        color: var(--text); font: inherit; font-size: .85rem; font-weight: 600;
+        line-height: 1.2; cursor: pointer; text-align: left;
+      }
+      .advanced-toggle .chevron { font-size: 1rem; line-height: 1; margin-left: auto; }
+      .advanced-panel { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-soft); }
       .toggle { display: flex; align-items: center; gap: 12px; cursor: pointer; }
       .toggle input { width: auto; }
 
@@ -83,8 +92,7 @@
 
       /* --- test lab ------------------------------------------------------- */
       .testlab {
-        background: var(--surface-sunken); border-radius: var(--radius-button);
-        padding: 16px; margin-top: 4px;
+        background: transparent; border-radius: 0; padding: 0; margin-top: 4px;
       }
       .testrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
       .testrow .spacer { flex: 1; }
@@ -129,7 +137,7 @@
 
       <!-- ---------------------------------------------------------- who -->
       <div class="card section">
-        <h2>Who the visitor meets</h2>
+        <h2>Avatar</h2>
         <p class="lead" id="whoLead"></p>
 
         <div class="field">
@@ -139,201 +147,204 @@
         </div>
 
         <div class="field">
-          <label>Avatar provider — which renderer to test</label>
+          <label>Avatar provider</label>
           <div class="choices" id="providerChoices"></div>
-          <p class="hint" id="providerHint"></p>
-        </div>
-
-        <!-- Every provider-specific group starts hidden. Which one applies is only
-             known after boot() has fetched settings and the provider list, and
-             defaulting to visible means a visible flash of the wrong vendor's fields
-             on every load. -->
-        <div class="field" id="anamFields" hidden>
-          <label for="avatarId">Avatar</label>
-          <select id="avatarId"></select>
-          <p class="hint" id="avatarHint">Loading the avatars available on your Anam account…</p>
-        </div>
-
-        <div class="grid2" id="simliFields" hidden>
-          <div class="field">
-            <label for="simliFaceId">Simli face ID</label>
-            <input id="simliFaceId" type="text" placeholder="follows SIMLI_FACE_ID in .env" />
-          </div>
-          <div class="field">
-            <label for="simliModel">Simli lip-sync model</label>
-            <select id="simliModel">
-              <option value="fasttalk">fasttalk</option>
-              <option value="artalk">artalk</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="akoolFields" hidden>
-          <div class="grid2">
-            <div class="field">
-              <label for="akoolAvatarId">Akool avatar</label>
-              <!-- A datalist rather than a select: the list only populates once a key
-                   exists, and until then an operator still has to be able to paste an
-                   id straight from the Akool dashboard. -->
-              <input
-                id="akoolAvatarId"
-                type="text"
-                list="akoolAvatarList"
-                placeholder="follows AKOOL_AVATAR_ID in .env"
-              />
-              <datalist id="akoolAvatarList"></datalist>
+          <button type="button" class="advanced-toggle" id="providerAdvancedToggle" aria-expanded="false">
+            <span>Advanced Settings</span>
+            <span class="chevron">▾</span>
+          </button>
+          <div class="advanced-panel" id="providerAdvancedPanel" hidden>
+            <!-- Every provider-specific group starts hidden. Which one applies is only
+                known after boot() has fetched settings and the provider list, and
+                defaulting to visible means a visible flash of the wrong vendor's fields
+                on every load. -->
+            <div class="field" id="anamFields" hidden>
+             <label for="avatarId">Avatar</label>
+             <select id="avatarId"></select>
+             <p class="hint" id="avatarHint">Loading the avatars available on your Anam account…</p>
             </div>
-            <div class="field">
-              <label for="akoolVoiceId">Akool voice ID</label>
-              <input id="akoolVoiceId" type="text" placeholder="Akool's own default voice" />
+
+            <div class="grid2" id="simliFields" hidden>
+             <div class="field">
+               <label for="simliFaceId">Simli face ID</label>
+               <input id="simliFaceId" type="text" placeholder="Using configured Face ID" />
+             </div>
+             <div class="field">
+               <label for="simliModel">Simli lip-sync model</label>
+               <select id="simliModel">
+                 <option value="fasttalk">fasttalk</option>
+                 <option value="artalk">artalk</option>
+               </select>
+             </div>
             </div>
-          </div>
 
-          <div class="field">
-            <label>How long each session is opened for</label>
-            <div class="choices" id="akoolSessionChoices">
-              <button type="button" data-seconds="120">2 minutes<small>cheapest</small></button>
-              <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
-              <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
+            <div id="akoolFields" hidden>
+             <div class="grid2">
+               <div class="field">
+                 <label for="akoolAvatarId">Akool avatar</label>
+                 <!-- A datalist rather than a select: the list only populates once a key
+                       exists, and until then an operator still has to be able to paste an
+                       id straight from the Akool dashboard. -->
+                 <input
+                   id="akoolAvatarId"
+                   type="text"
+                   list="akoolAvatarList"
+                   placeholder="Using configured Avatar ID"
+                 />
+                 <datalist id="akoolAvatarList"></datalist>
+               </div>
+               <div class="field">
+                 <label for="akoolVoiceId">Akool voice ID</label>
+                 <input id="akoolVoiceId" type="text" placeholder="Using configured Voice ID" />
+               </div>
+             </div>
+
+             <div class="field">
+               <label>How long each session is opened for</label>
+               <div class="choices" id="akoolSessionChoices">
+                 <button type="button" data-seconds="120">2 minutes<small>cheapest</small></button>
+                 <button type="button" data-seconds="300">5 minutes<small>covers a full chat</small></button>
+                 <button type="button" data-seconds="600">10 minutes<small>rarely needed</small></button>
+               </div>
+               <p class="hint" id="akoolSessionHint"></p>
+             </div>
+
+             <div class="field">
+               <label class="toggle" for="releaseAvatarWhenIdle">
+                 <input id="releaseAvatarWhenIdle" type="checkbox" />
+                 <span>Close the session when the stand goes quiet</span>
+               </label>
+               <p class="hint">
+                 Ends the session after the idle timeout above instead of holding it open
+                 for the next visitor, so an empty stand costs nothing. The next question
+                 reconnects automatically — a few seconds, spent while the visitor is
+                 still talking. Leave this off for Anam and Simli, which are not billed
+                 this way.
+                 <b style="color: var(--dv-intense-fire)"
+                   >Run <code>npm run check:akool</code> before trusting this.</b
+                 >
+                 It only saves money if Akool refunds the unused window on close, which
+                 that script measures against your real balance. If it does not refund,
+                 leave this off and just ask for a shorter window instead.
+               </p>
+             </div>
+
+             <p class="hint" id="akoolHint"></p>
             </div>
-            <p class="hint" id="akoolSessionHint"></p>
+
+            <p class="hint" id="voiceHint"></p>
           </div>
-
-          <p class="hint">
-            The session is always closed when the stand goes quiet — see
-            <b>“Turning the avatar on and off”</b> below for the timeout. There is no
-            switch for it any more, because leaving a paid window open for an empty
-            stand was never the right answer for any renderer.
-            <b style="color: var(--warning)"
-              >Run <code>npm run check:akool</code> to confirm the refund.</b
-            >
-            Closing early only returns money if Akool refunds the unused window, which
-            that script measures against your real balance. If it does not refund, ask
-            for a shorter window above instead.
-          </p>
-
-          <p class="hint" id="akoolHint"></p>
         </div>
-
-        <p class="hint" id="voiceHint"></p>
       </div>
 
       <!-- --------------------------------------------------------- sound -->
-      <div class="card section" id="soundCard">
-        <h2>How it sounds, and how it hears</h2>
+      <div class="card section" id="ttsCard">
+        <h2>Text to Speech (TTS)</h2>
         <p class="lead">
-          Pick an engine, type a line, and listen. Every engine gets the identical text
-          at the identical quality, so the only thing that differs is the voice —
-          judge them by ear and save the one you want the booth to use.
+          Pick the voice provider and style. The booth uses the matching default voice
+          for both languages unless you open Advanced Settings.
         </p>
 
         <div class="field">
-          <label>Voice engine — turns the answer into speech</label>
+          <label>Voice provider</label>
           <div class="choices" id="ttsChoices"></div>
           <p class="hint" id="ttsHint"></p>
         </div>
 
-        <!-- One voice group per engine shape. All start hidden: which applies is only
-             known after boot() has the engine list, and defaulting to visible flashes
-             the wrong vendor's fields on every load. -->
-        <div class="grid2" id="microsoftVoiceFields" hidden>
-          <div class="field">
-            <label for="voiceAr">Arabic voice</label>
-            <select id="voiceAr"></select>
+        <div class="field" id="ttsGenderFields">
+          <label>Voice</label>
+          <div class="choices" id="ttsGenderChoices">
+            <button type="button" data-gender="male" aria-pressed="true">Male</button>
+            <button type="button" data-gender="female">Female</button>
           </div>
-          <div class="field">
-            <label for="voiceEn">English voice</label>
-            <select id="voiceEn"></select>
-          </div>
-        </div>
-
-        <div id="elevenVoiceFields" hidden>
-          <div class="field">
-            <label>Voice</label>
-            <div class="choices" id="genderChoices">
-              <button type="button" data-gender="male">
-                Male<small>Mohammed Almansari · Sully</small>
-              </button>
-              <button type="button" data-gender="female">
-                Female<small>Abrar Sabbah · Jessa</small>
-              </button>
-            </div>
-            <p class="hint">
-              One switch, both languages. The voice has to agree with the face — a
-              visitor notices a mismatch before they notice anything else, and switching
-              language mid-conversation must not appear to change who they are talking
-              to. Male matches the shipping Anam persona, <b>Faisal — Cultural Guide</b>.
-              Leave the two pickers below empty to follow this.
-            </p>
-          </div>
-
-          <div class="grid2">
-            <div class="field">
-              <label for="elevenVoiceAr">Arabic voice — override</label>
-              <select id="elevenVoiceAr"></select>
-            </div>
-            <div class="field">
-              <label for="elevenVoiceEn">English voice — override</label>
-              <select id="elevenVoiceEn"></select>
-            </div>
-          </div>
-          <div class="field">
-            <label for="elevenModel">ElevenLabs model</label>
-            <select id="elevenModel"></select>
-            <p class="hint">
-              A visitor is standing there waiting, so latency is a feature. Flash is the
-              fastest and v3 the most expressive; compare them on the same line below
-              before deciding the trade is worth it.
-            </p>
-          </div>
-          <p class="hint" id="elevenHint"></p>
-        </div>
-
-        <div class="field" id="openaiVoiceFields" hidden>
-          <label for="openaiVoice">OpenAI voice</label>
-          <select id="openaiVoice"></select>
-          <p class="hint">
-            One voice for both languages. These are English-first voices — listen to the
-            Arabic below before you trust it in Riyadh.
-          </p>
         </div>
 
         <div class="field">
-          <label>Hearing engine — turns the visitor's speech into text</label>
+          <button type="button" class="advanced-toggle" id="ttsAdvancedToggle" aria-expanded="false">
+            <span>Advanced Settings</span>
+            <span class="chevron">▾</span>
+          </button>
+          <div class="advanced-panel" id="ttsAdvancedPanel" hidden>
+            <div class="field" id="microsoftVoiceFields" hidden>
+             <label for="voiceAr">Arabic voice</label>
+             <select id="voiceAr"></select>
+            </div>
+            <div class="field" id="voiceEnField" hidden>
+             <label for="voiceEn">English voice</label>
+             <select id="voiceEn"></select>
+            </div>
+
+            <div id="elevenVoiceFields" hidden>
+             <div class="grid2">
+               <div class="field">
+                 <label for="elevenVoiceAr">Arabic voice</label>
+                 <select id="elevenVoiceAr"></select>
+               </div>
+               <div class="field">
+                 <label for="elevenVoiceEn">English voice</label>
+                 <select id="elevenVoiceEn"></select>
+               </div>
+             </div>
+             <div class="field">
+               <label for="elevenModel">ElevenLabs model</label>
+               <select id="elevenModel"></select>
+               <p class="hint">Compare model speed and tone before you save your choice.</p>
+             </div>
+             <p class="hint" id="elevenHint"></p>
+            </div>
+
+            <div class="field" id="openaiVoiceFields" hidden>
+             <label for="openaiVoice">OpenAI voice</label>
+             <select id="openaiVoice"></select>
+             <p class="hint">These voices are English-first, so test the Arabic carefully.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="field testlab">
+          <button type="button" class="advanced-toggle" id="ttsTestToggle" aria-expanded="false">
+            <span>Try a Line</span>
+            <span class="chevron">▾</span>
+          </button>
+          <div class="advanced-panel" id="ttsTestPanel" hidden>
+            <textarea id="testText" dir="auto" style="min-height: 72px"></textarea>
+            <div class="testrow">
+             <div class="choices compact" id="testLang">
+               <button type="button" data-lang="ar">Arabic</button>
+               <button type="button" data-lang="en">English</button>
+             </div>
+             <div class="spacer"></div>
+             <button type="button" id="speakOne" class="secondary">▶ Hear selected engine</button>
+             <button type="button" id="speakAll">Compare every engine</button>
+            </div>
+            <p class="hint">This only plays for you — it is not saved to the booth.</p>
+            <div id="ttsResults" class="results"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card section" id="sttCard">
+        <h2>Speech to Text (STT)</h2>
+        <p class="lead">Choose the engine that listens for visitor questions.</p>
+
+        <div class="field">
+          <label>Listening engine</label>
           <div class="choices" id="sttChoices"></div>
           <p class="hint" id="sttHint"></p>
         </div>
 
-        <!-- ------------------------------------------------------ test lab -->
         <div class="field testlab">
-          <label for="testText">Try a line</label>
-          <textarea id="testText" dir="auto" style="min-height: 72px"></textarea>
-          <div class="testrow">
-            <div class="choices compact" id="testLang">
-              <button type="button" data-lang="ar">Arabic</button>
-              <button type="button" data-lang="en">English</button>
+          <button type="button" class="advanced-toggle" id="sttTestToggle" aria-expanded="false">
+            <span>Try Your Voice</span>
+            <span class="chevron">▾</span>
+          </button>
+          <div class="advanced-panel" id="sttTestPanel" hidden>
+            <div class="testrow">
+             <button type="button" id="recBtn" class="secondary">● Record a question</button>
+             <span class="hint" id="recHint" style="margin:0">Records from this machine and compares the configured engines.</span>
             </div>
-            <div class="spacer"></div>
-            <button type="button" id="speakOne" class="secondary">▶ Hear selected engine</button>
-            <button type="button" id="speakAll">Compare every engine</button>
+            <div id="sttResults" class="results"></div>
           </div>
-          <p class="hint">
-            Nothing here is saved and nothing reaches the booth — it only plays to you.
-            Press Save at the bottom to make the selected engine live.
-          </p>
-          <div id="ttsResults" class="results"></div>
-        </div>
-
-        <div class="field testlab">
-          <label>Try your voice</label>
-          <div class="testrow">
-            <button type="button" id="recBtn" class="secondary">● Record a question</button>
-            <span class="hint" id="recHint" style="margin:0">
-              Records from this machine's microphone, then transcribes it on every
-              configured engine at once.
-            </span>
-          </div>
-          <div id="sttResults" class="results"></div>
         </div>
       </div>
 
@@ -471,93 +482,88 @@
 
       <!-- ------------------------------------------------------ knowledge -->
       <div class="card section">
-        <h2>What it knows</h2>
-        <p class="lead">
-          The assistant answers only from the Devoteam knowledge base. Anything you add
-          here is added to that — so answers using it still show a source.
-        </p>
+        <h2>Knowledge &amp; Instructions</h2>
+        <p class="lead">Add facts the assistant should know, and guidance on how it should respond.</p>
 
-        <div class="field">
-          <label for="extraKnowledge">Extra facts for this event</label>
-          <textarea
-            id="extraKnowledge"
-            placeholder="Our stand is in Hall 2, number H2-14.&#10;The live demo runs at 11:00 and 15:00 each day.&#10;Ask for Osama if a visitor wants a meeting."
-          ></textarea>
-          <p class="hint">
-            Write plain sentences, one fact per line. Good for things too new or too
-            local for the knowledge base — stand number, demo times, who to ask for.
-          </p>
-        </div>
+        <button type="button" class="advanced-toggle" id="knowledgeToggle" aria-expanded="false">
+          <span>Knowledge &amp; Instructions</span>
+          <span class="chevron">▾</span>
+        </button>
 
-        <div class="field">
-          <label for="customInstructions">House rules</label>
-          <textarea
-            id="customInstructions"
-            placeholder="Mention our Vision 2030 work whenever the public sector comes up.&#10;Don't offer to book meetings — take the visitor's name instead."
-          ></textarea>
-          <p class="hint">
-            Tells the assistant how to behave, not what is true. Leave empty unless you
-            have a reason.
-          </p>
+        <div class="advanced-panel" id="knowledgePanel" hidden>
+          <div class="field">
+            <label for="extraKnowledge">Extra Facts for This Event</label>
+            <textarea
+              id="extraKnowledge"
+              placeholder="Our stand is in Hall 2, number H2-14.&#10;The live demo runs at 11:00 and 15:00 each day.&#10;Ask for Osama if a visitor wants a meeting."
+            ></textarea>
+            <p class="hint">Short facts the assistant should know while on this stand.</p>
+          </div>
+
+          <div class="field">
+            <label for="customInstructions">Assistant Instructions</label>
+            <textarea
+              id="customInstructions"
+              placeholder="Mention our Vision 2030 work whenever the public sector comes up.&#10;Don't offer to book meetings — take the visitor's name instead."
+            ></textarea>
+            <p class="hint">How the assistant should behave and respond in conversations.</p>
+          </div>
         </div>
       </div>
 
       <!-- ------------------------------------------------------- fallback -->
       <div class="card section">
-        <h2>If something breaks</h2>
-        <p class="lead">
-          Networks fail at exhibitions. This is what a visitor gets instead of a frozen
-          screen — set it once and forget it.
-        </p>
+        <h2>Fallback Response</h2>
+        <p class="lead">Choose what the booth does when the assistant cannot provide an answer.</p>
 
-        <div class="field">
-          <label class="toggle" for="fallbackEnabled">
-            <input id="fallbackEnabled" type="checkbox" />
-            <span>Say something when an answer fails</span>
-          </label>
-        </div>
+        <button type="button" class="advanced-toggle" id="fallbackToggle" aria-expanded="false">
+          <span>Advanced Settings</span>
+          <span class="chevron">▾</span>
+        </button>
 
-        <div class="field">
-          <label>How it responds</label>
-          <div class="choices" id="fallbackMode">
-            <button type="button" data-mode="speak">
-              Speak it<small>Avatar says the line out loud</small>
-            </button>
-            <button type="button" data-mode="text">
-              Show it only<small>Subtitle only — use if audio is the problem</small>
-            </button>
-          </div>
-        </div>
-
-        <div class="grid2">
+        <div class="advanced-panel" id="fallbackPanel" hidden>
           <div class="field">
-            <label for="fallbackAr">Arabic</label>
-            <textarea id="fallbackAr" dir="rtl" style="min-height: 84px"></textarea>
+            <label class="toggle" for="fallbackEnabled">
+              <input id="fallbackEnabled" type="checkbox" />
+              <span>Enable fallback response</span>
+            </label>
           </div>
-          <div class="field">
-            <label for="fallbackEn">English</label>
-            <textarea id="fallbackEn" style="min-height: 84px"></textarea>
-          </div>
-        </div>
 
-        <p class="hint">
-          Keep it short and point at a human. A visitor who is told where to go has been
-          helped; one who is told "an error occurred" has not.
-        </p>
+          <div class="field" id="fallbackModeField">
+            <label>How it responds</label>
+            <div class="choices" id="fallbackMode">
+              <button type="button" data-mode="speak">Speak &amp; Display<small>Avatar says the line and shows it</small></button>
+              <button type="button" data-mode="text">Display Only<small>Show the line without speaking</small></button>
+            </div>
+          </div>
+
+          <div class="grid2" id="fallbackMessages">
+            <div class="field">
+              <label for="fallbackAr">Arabic</label>
+              <textarea id="fallbackAr" dir="rtl" style="min-height: 84px"></textarea>
+            </div>
+            <div class="field">
+              <label for="fallbackEn">English</label>
+              <textarea id="fallbackEn" style="min-height: 84px"></textarea>
+            </div>
+          </div>
+
+          <p class="hint">Keep it short and point the visitor to a person.</p>
+        </div>
       </div>
 
       <!-- -------------------------------------------------------- summary -->
       <div class="card section">
-        <h2>Right now</h2>
+        <h2>Current Setup</h2>
         <div class="preview" id="preview"></div>
       </div>
 
       <div class="savebar">
-        <button id="save">Save changes</button>
-        <button id="revert" class="secondary">Undo my edits</button>
+        <button id="save">Save Changes</button>
+        <button id="revert" class="secondary">Discard Changes</button>
         <div class="spacer"></div>
         <span class="status" id="status"></span>
-        <button id="restore" class="secondary">Restore defaults</button>
+        <button id="restore" class="secondary">Restore Defaults</button>
       </div>
     </div>
 
