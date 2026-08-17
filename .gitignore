@@ -12,3 +12,10 @@ dist/
 __pycache__/
 .next/
 *.log
+
+# Deployment runbooks. They name the hosts, paths and ports of a specific stand —
+# this repository is public, and none of that belongs in it. They are also written
+# per event and go stale between them, so a copy in git is a copy someone follows
+# after it stopped being true. Keep them alongside the booth, not in the source.
+DEPLOYMENT.md
+DEPLOYMENT_*.md
