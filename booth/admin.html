@@ -4,7 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Devoteam — Booth settings</title>
-    <link rel="icon" href="/brand/devoteam-color.svg" />
+    <link rel="icon" href="/brand/devoteam-mark.svg" />
+
+    <!-- Same reason as the booth page: `font-display: optional` needs the file
+         already in flight, or a cold load silently keeps the fallback. This page is
+         English, so only the Latin face is on the critical path. -->
+    <link rel="preload" href="/fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Linked, not imported from JS. As a module import the stylesheet only arrives
+         once the module graph resolves, which leaves a window where the page paints
+         with no CSS at all — a giant logo and Times New Roman. A <link> is
+         render-blocking, so that window does not exist. Vite still processes and
+         hashes it for the build. -->
+    <link rel="stylesheet" href="/src/style.css" />
+
     <script>
       document.documentElement.setAttribute(
         "data-theme",
@@ -17,27 +30,31 @@
       .wrap { max-width: 940px; margin: 0 auto; padding-bottom: 96px; }
       .section { margin-bottom: 18px; }
       .section > h2 {
-        font-size: 1.05rem; font-weight: 600; margin: 0 0 4px;
+        font-size: var(--text-h5); font-weight: 600; margin: 0 0 4px;
       }
       .section > .lead {
-        color: var(--text-muted); font-size: .87rem; margin: 0 0 18px; line-height: 1.55;
+        color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 18px; line-height: 1.55;
       }
       .field { margin-bottom: 18px; }
       .field:last-child { margin-bottom: 0; }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
       @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
 
-      .choices { display: flex; gap: 8px; flex-wrap: wrap; }
+      .choices { display: flex; gap: 12px; flex-wrap: wrap; }
       .choices button {
-        flex: 1; min-width: 120px; padding: 12px 14px; font-weight: 500; font-size: .92rem;
+        flex: 1; min-width: 120px; padding: 12px 14px; font-weight: 500; font-size: var(--text-base);
         background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
         text-align: start; line-height: 1.35;
       }
-      .choices button small { display: block; color: var(--text-muted); font-size: .76rem; margin-top: 3px; }
+      .choices button small { display: block; color: var(--text-muted); font-size: var(--text-micro); margin-top: 3px; }
+      /* Canon poppy under a 16px white label is 3.45:1 and fails; §1.4's deepened
+         variant is the fill that carries a standard-size label. */
       .choices button[aria-pressed="true"] {
-        background: var(--dv-poppy); border-color: var(--dv-poppy); color: #fff;
+        background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent);
       }
-      .choices button[aria-pressed="true"] small { color: rgba(255,255,255,.85); }
+      /* Full white, not 85%: at 12px the dimmed version drops to 3.8:1 on this fill.
+         The smaller size already carries the demotion without help from opacity. */
+      .choices button[aria-pressed="true"] small { color: var(--on-accent); }
 
       .advanced-toggle {
         display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -60,13 +77,16 @@
         border-radius: var(--radius-card); padding: 14px 18px; box-shadow: var(--shadow);
       }
       .savebar .spacer { flex: 1; }
-      .status { font-size: .85rem; color: var(--text-muted); }
-      .status.ok { color: var(--dv-fresh-mint); }
-      .status.err { color: var(--dv-poppy); }
+      /* Role tokens, not brand tokens: canon poppy is 3.45:1 on the light surface and
+         also happens to be the CTA colour, so status was borrowing the accent to mean
+         "failed". Both are fixed by naming the job instead of the hue. */
+      .status { font-size: var(--text-sm); color: var(--text-muted); }
+      .status.ok { color: var(--success); }
+      .status.err { color: var(--critical-icon); font-weight: 600; }
 
       .preview {
         background: var(--surface-sunken); border-radius: var(--radius-button);
-        padding: 14px 16px; font-size: .9rem; line-height: 1.6; color: var(--text-muted);
+        padding: 14px 16px; font-size: var(--text-base); line-height: 1.6; color: var(--text-muted);
       }
       .preview b { color: var(--text); font-weight: 600; }
 
@@ -76,24 +96,27 @@
       }
       .testrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
       .testrow .spacer { flex: 1; }
-      .choices.compact button { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: .85rem; }
+      .choices.compact button { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: var(--text-sm); }
 
       .results:not(:empty) { margin-top: 14px; display: grid; gap: 8px; }
       .result {
         display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         background: var(--surface-2); border: 1px solid var(--border);
-        border-radius: var(--radius-button); padding: 10px 14px; font-size: .88rem;
+        border-radius: var(--radius-button); padding: 10px 14px; font-size: var(--text-sm);
       }
       /* The engine that is about to go live should be findable at a glance in a list
          of four near-identical rows. */
-      .result.chosen { border-color: var(--dv-poppy); }
+      .result.chosen { border-color: var(--accent); }
       .result .name { font-weight: 600; min-width: 108px; }
-      .result .meta { color: var(--text-muted); font-size: .8rem; }
+      .result .meta { color: var(--text-muted); font-size: var(--text-micro); }
       .result .said { flex: 1 1 100%; line-height: 1.5; }
       .result .said:dir(rtl) { text-align: right; }
-      .result.bad { border-color: var(--dv-poppy); }
-      .result.bad .meta { color: var(--dv-poppy); }
-      .result button { padding: 7px 12px; font-size: .82rem; }
+      /* A failed row and the chosen row were both wearing the brand red, which made
+         "this one is live" and "this one is broken" the same signal. The failure now
+         carries the critical colour, and the word in .meta says which it is. */
+      .result.bad { border-color: var(--critical-icon); }
+      .result.bad .meta { color: var(--critical-icon); }
+      .result button { padding: 7px 12px; font-size: var(--text-sm); }
       .result .spacer { flex: 1; }
     </style>
   </head>
@@ -106,7 +129,9 @@
           <div class="where">Changes apply to the next question — no restart needed</div>
         </div>
         <div class="spacer"></div>
-        <button class="chip" id="themeBtn">◐</button>
+        <!-- Real text, not "◐". A screen reader announced the character; admin.js
+             keeps the label in step with the current theme. -->
+        <button class="chip" id="themeBtn">Theme</button>
         <a class="chip" href="/">← Back to booth</a>
       </header>
 
@@ -319,10 +344,14 @@
 
         <div class="field">
           <label>ANSWER LENGTH</label>
+          <!-- Seconds are measured out loud on the shipping Arabic voice, not derived
+               from a reading rate. Arabic through ElevenLabs runs about 1.4 words a
+               second, well under the 2.2 these buttons used to assume — they promised
+               half the length they delivered. -->
           <div class="choices" id="lengthChoices">
-            <button type="button" data-words="22">Short<small>~10 seconds</small></button>
-            <button type="button" data-words="35">Normal<small>~15 seconds</small></button>
-            <button type="button" data-words="55">Detailed<small>~25 seconds</small></button>
+            <button type="button" data-words="22">Short<small>~16 seconds</small></button>
+            <button type="button" data-words="35">Normal<small>~25 seconds</small></button>
+            <button type="button" data-words="55">Detailed<small>~39 seconds</small></button>
           </div>
         </div>
 
@@ -335,9 +364,98 @@
         </div>
 
         <div class="field">
+          <label>HOW FAST IT ANSWERS</label>
+          <div class="choices" id="modelChoices">
+            <button type="button" data-model="claude-sonnet-5">
+              Sonnet 5<small>~2.0s · holds the register</small>
+            </button>
+            <button type="button" data-model="claude-haiku-4-5-20251001">
+              Haiku 4.5<small>~1.1s · looser</small>
+            </button>
+          </div>
+          <p class="hint">
+            Time from the question ending to the first word being available to speak,
+            measured against this knowledge base. Haiku is genuinely about a second
+            quicker. It is not the default because on the same three Arabic questions it
+            ran 62, 32 and 19 words against a 22-word budget, and wrote "11,000" in
+            digits where the answer should say the number in words — which an Arabic
+            voice can read wrong out loud.
+            <b>Listen to a few answers on it before an event, not during one.</b>
+          </p>
+        </div>
+
+        <div class="field">
           <label for="idleResetMinutes">RESET CONVERSATION AFTER INACTIVITY</label>
           <input id="idleResetMinutes" type="number" min="1" max="60" />
           <p class="hint">After this period of inactivity, the conversation resets automatically for the next visitor.</p>
+        </div>
+      </div>
+
+      <!-- ----------------------------------------------------- activation -->
+      <div class="card section">
+        <h2>Turning the avatar on and off</h2>
+        <p class="lead">
+          A live avatar session costs something on every renderer — money, or one of the
+          limited number of sessions your account can hold open at once. These two
+          settings decide how much of the day the stand spends paying for a screen
+          nobody is standing at.
+        </p>
+
+        <div class="field">
+          <label class="toggle" for="requireTapToStart">
+            <input id="requireTapToStart" type="checkbox" />
+            <span>Wait for a visitor to touch the screen before connecting</span>
+          </label>
+          <p class="hint">
+            On, the booth opens asleep and the whole panel is the start button. Off, it
+            connects the moment the page loads and holds the session all day — only
+            worth it for a demo where a face already on screen when someone walks in is
+            the effect you are showing. The booth can still answer typed questions while
+            asleep; it wakes itself first.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="idleDisconnectMinutes">
+            Close the session after this many minutes of silence
+          </label>
+          <input id="idleDisconnectMinutes" type="number" min="1" max="60" />
+          <p class="hint">
+            Separate from the conversation reset above, and normally shorter: the face
+            should go before the words do, because the face is the part that costs.
+            Reconnecting takes a few seconds and is paid while the next visitor is
+            walking up. Raise it if the stand is busy enough that it reconnects
+            constantly.
+          </p>
+        </div>
+
+        <div class="field">
+          <label>How the avatar sits on screen</label>
+          <div class="choices compact" id="fitChoices">
+            <button type="button" data-fit="cover">Fill the stage<small>crops the edges</small></button>
+            <button type="button" data-fit="contain">Fit the whole frame<small>bars at the edges</small></button>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label for="stageZoom">Zoom <b id="stageZoomOut"></b></label>
+              <input id="stageZoom" type="range" min="0.4" max="2" step="0.02" />
+            </div>
+            <div class="field">
+              <label for="stageFocusY">Vertical anchor <b id="stageFocusYOut"></b></label>
+              <input id="stageFocusY" type="range" min="0" max="100" step="1" />
+            </div>
+          </div>
+          <p class="hint" id="framingHint"></p>
+          <p class="hint">
+            Saved per renderer — these controls always edit whichever one is selected at
+            the top of this page, because the vendors do not send the same shape of
+            video. Anam sends a tall portrait, which wants <b>Fill the stage</b>. Simli
+            sends a 512×512 square, and filling a portrait stage with a square crops the
+            head on every side — so it wants <b>Fit the whole frame</b>, and the bars at
+            the edges are the stage's own background rather than a fault. Zoom scales
+            after that; the anchor is the point held still while it scales, so set it on
+            the face.
+          </p>
         </div>
       </div>
 

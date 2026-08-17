@@ -1,5 +1,4 @@
-import "./style.css";
-import { initTheme, toggleTheme } from "./theme.js";
+import { initTheme, toggleTheme, currentTheme } from "./theme.js";
 
 const $ = (id) => document.getElementById(id);
 const safeHtml = (id, html) => {
@@ -22,6 +21,19 @@ const safeText = (id, text) => {
  */
 
 let saved = null; // last known server state, for Undo
+
+/**
+ * Display names for the gender pairs, so the summary can say who a visitor will hear
+ * when the override fields are empty. Mirrors ELEVEN_VOICE_PAIRS in
+ * server/tts-engines.mjs, which is the authority — this copy exists only because the
+ * summary line renders before /api/tts/eleven-voices has necessarily answered, and a
+ * summary that says "—" for a second on load reads as a misconfigured booth.
+ */
+const ELEVEN_PAIRS = {
+  male: { ar: "Mohammed Almansari", en: "Sully" },
+  female: { ar: "Abrar Sabbah", en: "Jessa" },
+};
+
 let voices = [];
 let providers = [];
 let ttsEngines = [];
@@ -80,6 +92,7 @@ const TEXT_FIELDS = [
   "elevenModel",
   "openaiVoice",
   "idleResetMinutes",
+  "idleDisconnectMinutes",
   "extraKnowledge",
   "customInstructions",
   "simliFaceId",
@@ -143,8 +156,27 @@ function read() {
   s.idleResetMinutes = Number(s.idleResetMinutes) || 5;
   s.answerWords = Number(selected("lengthChoices", "words")) || 35;
   s.akoolSessionSeconds = Number(selected("akoolSessionChoices", "seconds")) || 300;
-  s.releaseAvatarWhenIdle = $("releaseAvatarWhenIdle").checked;
   s.greetFirstAnswer = $("greetFirstAnswer").checked;
+  s.requireTapToStart = $("requireTapToStart").checked;
+  s.idleDisconnectMinutes = Number(s.idleDisconnectMinutes) || 2;
+  s.answerModel = selected("modelChoices", "model") || "claude-sonnet-5";
+  // The old dedicated gender picker is gone; the TTS gender buttons are the control
+  // now. Follow them, so the server-side pair fallback in tts-engines.mjs agrees with
+  // what the operator actually chose if the explicit voice ids are ever cleared.
+  s.voiceGender = selected("genderChoices", "gender") || gender;
+
+  // Framing is per renderer, and the page only ever edits the one that is selected —
+  // so the other two have to be carried through from the last known server state or
+  // saving would silently reset them to whatever the defaults happen to be.
+  const provider = s.avatarProvider;
+  s.stageFraming = {
+    ...(saved?.stageFraming ?? {}),
+    [provider]: {
+      fit: selected("fitChoices", "fit") || "cover",
+      zoom: Number($("stageZoom").value) || 1,
+      focusY: Number($("stageFocusY").value) || 22,
+    },
+  };
   s.fallback = {
     enabled: $("fallbackEnabled").checked,
     mode: selected("fallbackMode", "mode") || "speak",
@@ -157,7 +189,9 @@ function read() {
 function write(s) {
   for (const id of TEXT_FIELDS) $(id).value = s[id] ?? "";
   $("greetFirstAnswer").checked = !!s.greetFirstAnswer;
-  $("releaseAvatarWhenIdle").checked = !!s.releaseAvatarWhenIdle;
+  $("requireTapToStart").checked = s.requireTapToStart !== false;
+  select("modelChoices", "model", s.answerModel ?? "claude-sonnet-5");
+  select("genderChoices", "gender", s.voiceGender ?? "male");
   select("akoolSessionChoices", "seconds", s.akoolSessionSeconds ?? 300);
   $("fallbackEnabled").checked = !!s.fallback?.enabled;
   $("fallbackAr").value = s.fallback?.messageAr ?? "";
@@ -184,7 +218,42 @@ function write(s) {
   applyTtsEngine();
   applySttEngine();
   applyAkoolSession();
+  applyFraming();
   renderPreview();
+}
+
+/**
+ * Load the framing controls with the selected renderer's numbers.
+ *
+ * Called on every provider change as well as on load, because the two sliders mean
+ * something different depending on which renderer is selected — leaving Anam's numbers
+ * on screen after switching to Simli would have an operator adjust one avatar's crop
+ * and save it onto another's.
+ */
+function applyFraming() {
+  const provider = selected("providerChoices", "provider") || "anam";
+  const frame = saved?.stageFraming?.[provider] ?? { fit: "cover", zoom: 1, focusY: 22 };
+  select("fitChoices", "fit", frame.fit ?? "cover");
+  $("stageZoom").value = frame.zoom ?? 1;
+  $("stageFocusY").value = frame.focusY ?? 22;
+  showFraming();
+}
+
+/** Echo the values as words — a slider with no readout cannot be reproduced tomorrow. */
+function showFraming() {
+  const zoom = Number($("stageZoom").value);
+  const contain = selected("fitChoices", "fit") === "contain";
+  $("stageZoomOut").textContent = `${Math.round(zoom * 100)}%`;
+  $("stageFocusYOut").textContent = `${$("stageFocusY").value}% from the top`;
+  $("framingHint").textContent = contain
+    ? zoom > 1
+      ? "The whole frame fits, then scaled past the edges — the top and bottom may be cut off again."
+      : "The whole frame fits inside the stage. Nothing is cropped. Use this when the head is being cut off."
+    : zoom < 1
+      ? "Filled and cropped, then pulled back inside the stage."
+      : zoom > 1
+        ? "Filled and cropped, then pushed past the edges — crops more."
+        : "The video fills the stage, cropped to fit. Right for a tall portrait avatar.";
 }
 
 /**
@@ -279,6 +348,7 @@ function applyProvider() {
   const anamFields = $("anamFields"); if (anamFields) anamFields.hidden = id !== "anam";
   const simliFields = $("simliFields"); if (simliFields) simliFields.hidden = id !== "simli";
   const akoolFields = $("akoolFields"); if (akoolFields) akoolFields.hidden = id !== "akool";
+  applyFraming();
 
   const usesOurVoice = p?.mode !== "text";
 
@@ -399,11 +469,18 @@ for (const groupId of [
   "ttsGenderChoices",
   "sttChoices",
   "akoolSessionChoices",
+  "modelChoices",
+  "fitChoices",
 ]) {
-  $(groupId).addEventListener("click", (e) => {
+  // Guarded because this page is assembled from two layouts — a group that one of
+  // them does not render must not take the whole script down on load.
+  const group = $(groupId);
+  if (!group) continue;
+  group.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
     for (const b of $(groupId).children) b.setAttribute("aria-pressed", String(b === btn));
+    if (groupId === "fitChoices") showFraming();
     if (groupId === "providerChoices") applyProvider();
     if (groupId === "ttsChoices") {
       applyTtsEngine();
@@ -440,6 +517,14 @@ if (!selected("sttChoices", "engine")) {
   select("sttChoices", "engine", DEFAULT_STT_ENGINE);
 }
 
+// The framing sliders echo their value as they move but only mark the form dirty on
+// release. Firing `dirty()` on every pixel of a drag would flood the status line with
+// "Unsaved changes" and make the readout unreadable while it is being read.
+for (const id of ["stageZoom", "stageFocusY"]) {
+  $(id).addEventListener("input", showFraming);
+  $(id).addEventListener("change", dirty);
+}
+
 // The test-lab language is not a setting — it decides which line gets synthesised
 // here and nothing else, so it must never mark the form dirty or the operator would
 // be prompted to save a preference that does not exist.
@@ -456,52 +541,63 @@ $("testLang").addEventListener("click", (e) => {
 function renderPreview() {
   const s = read();
   const words = s.answerWords;
-  const seconds = Math.round(words / 2.2);
+  // 1.4 words a second, measured on the shipping Arabic voice — see WORDS_PER_SECOND
+  // in server/system-prompt.mjs. The old 2.2 was an English reading rate and told the
+  // operator an answer would run half as long as it does.
+  const seconds = Math.round(words / 1.4);
   const av = [...$("avatarId").options].find((o) => o.value === s.avatarId)?.textContent;
   const p = providers.find((x) => x.id === s.avatarProvider) ?? providers[0];
   const tts = ttsEngines.find((x) => x.id === s.ttsEngine) ?? ttsEngines[0];
   const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
   const providerName = p?.label ?? "Anam";
 
-  const providerLine = `Visitors meet an <b>${escape(providerName)}</b> avatar.`;
+  const providerLine = `Visitors meet <b>${escape(av || "—")}</b> via <b>${escape(providerName)}</b>.`;
 
+  // What the operator needs from this line is which voice a visitor will actually
+  // hear. The gender buttons are the control on this page and read() maps them
+  // straight onto the ElevenLabs pair / OpenAI voice, so resolve the name from the
+  // selected gender rather than from the override fields — those are always filled in
+  // now, and echoing a raw voice id back would tell the operator nothing.
   let voiceLine = `Voice is provided by <b>${escape(tts?.label ?? s.ttsEngine)}</b>.`;
   if (p?.mode === "text") {
     voiceLine = `Voice is provided by <b>${escape(providerName)}</b> and the external TTS engine is bypassed.`;
   } else if (tts?.id === "elevenlabs") {
     const gender = selected("ttsGenderChoices", "gender") || "male";
-    const arName = gender === "female" ? DEFAULT_ELEVENLABS_VOICE_NAMES.female.ar : DEFAULT_ELEVENLABS_VOICE_NAMES.male.ar;
-    const enName = gender === "female" ? DEFAULT_ELEVENLABS_VOICE_NAMES.female.en : DEFAULT_ELEVENLABS_VOICE_NAMES.male.en;
-    voiceLine = `Voice is provided by <b>ElevenLabs</b> using <b>${escape(arName)}</b> for Arabic and <b>${escape(enName)}</b> for English.`;
+    const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
+    voiceLine = `Voice is provided by <b>ElevenLabs</b> using <b>${escape(names.ar)}</b> for Arabic and <b>${escape(names.en)}</b> for English.`;
   } else if (tts?.id === "openai") {
     const gender = selected("ttsGenderChoices", "gender") || "male";
     const voiceName = gender === "female" ? "Nova" : "Ash";
     voiceLine = `Voice is provided by <b>OpenAI</b> using <b>${escape(voiceName)}</b> for Arabic and English.`;
   } else if (tts?.voiceMode === "microsoft") {
-    voiceLine = `Voice is provided by <b>${escape(tts.label ?? "Microsoft")}</b>.`;
+    voiceLine =
+      `Voice is provided by <b>${escape(tts.label ?? "Microsoft")}</b> using ` +
+      `<b>${escape(shortVoice(s.voiceAr))}</b> for Arabic and <b>${escape(shortVoice(s.voiceEn))}</b> for English.`;
   }
-
-  const fallbackLine = s.fallback.enabled
-    ? `${s.fallback.mode === "speak" ? "Speak & Display" : "Display Only"}`
-    : "Disabled";
-
-  const sessionLine = p?.id === "akool"
-    ? `Response time is about <b>${seconds} seconds</b>.`
-    : `Response time is about <b>${seconds} seconds</b>.`;
-
-  const fallbackSentence = s.fallback.enabled
-    ? `Failed answers use <b>${fallbackLine}</b> as the fallback response.`
-    : `Fallback response is <b>${fallbackLine}</b>.`;
 
   const preview = $("preview");
   if (preview) {
-    preview.innerHTML = [
-      providerLine,
-      voiceLine,
-      `Listening uses <b>${escape(stt?.label ?? s.sttEngine)}</b>.`,
-      sessionLine,
-      fallbackSentence,
-    ].join(" ");
+    preview.innerHTML = `
+      ${providerLine}
+      ${voiceLine}
+      It listens with <b>${escape(stt?.label ?? s.sttEngine)}</b>.
+      Answers run about <b>${seconds} seconds</b>, and it
+      ${s.greetFirstAnswer ? "greets each visitor once" : "skips greetings"}.
+      ${
+        s.requireTapToStart
+          ? `The avatar stays off until someone touches the screen, and closes itself again after
+             <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
+          : `<b>The avatar connects on load and stays connected</b>, closing only after
+             <b>${s.idleDisconnectMinutes} minutes</b> of silence.`
+      }
+      The conversation clears itself after <b>${s.idleResetMinutes} minutes</b> of silence.
+      ${
+        s.fallback.enabled
+          ? `If an answer fails it ${s.fallback.mode === "speak" ? "says the fallback out loud" : "shows the fallback as a subtitle"}.`
+          : `<b>If an answer fails it says nothing</b> — the screen will just sit there.`
+      }
+      ${s.extraKnowledge.trim() ? `It also knows <b>${s.extraKnowledge.trim().split("\n").filter(Boolean).length} extra fact(s)</b> you added.` : ""}
+    `;
   }
 }
 
@@ -720,7 +816,7 @@ function dirty() {
 for (const id of [
   ...TEXT_FIELDS,
   "greetFirstAnswer",
-  "releaseAvatarWhenIdle",
+  "requireTapToStart",
   "fallbackEnabled",
   "fallbackAr",
   "fallbackEn",
@@ -772,11 +868,20 @@ $("restore").onclick = async () => {
   status("Restored to the tested defaults", "ok");
 };
 
-$("themeBtn").onclick = () => toggleTheme();
+/* The button says which theme is active rather than showing a glyph, so it has a real
+   accessible name and an operator can tell the current state without squinting. */
+function labelTheme() {
+  $("themeBtn").textContent = currentTheme() === "dark" ? "Theme: dark" : "Theme: light";
+}
+$("themeBtn").onclick = () => {
+  toggleTheme();
+  labelTheme();
+};
 
 /* -------------------------------------------------------------------- init */
 
 initTheme();
+labelTheme();
 
 async function boot() {
   const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([
@@ -849,9 +954,13 @@ async function boot() {
       sel.innerHTML = `<option value="${escape(savedId)}">${escape(savedId || "none configured")}</option>`;
       continue;
     }
+    // The empty option is the normal state, not an escape hatch — with the Male/Female
+    // switch above doing the work, most booths never touch these two. Naming it after
+    // that switch rather than after an environment variable is what makes the
+    // relationship visible to an operator who has never read the .env file.
     const useEnv = document.createElement("option");
     useEnv.value = "";
-    useEnv.textContent = `Use ELEVENLABS_VOICE_${langCode.toUpperCase()} from .env`;
+    useEnv.textContent = "Follow the Male / Female choice above";
     sel.appendChild(useEnv);
 
     const native = elevenVoices.filter((v) => v.language === langCode);

@@ -1,0 +1,33 @@
+# Keep the build context small and keep secrets out of it.
+#
+# .env matters most: without this line it is copied into the build context and can be
+# baked into an image layer, where it survives being deleted in a later step and ships
+# every vendor key to wherever that image goes. Keys reach the container at RUN time
+# through env_file, never at BUILD time.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+node_modules
+harness/node_modules
+dist
+out
+data
+__pycache__
+*.log
+
+# Phase 0 material. 48 committed WAVs plus the renderer bake-off harness are how the
+# vendors were scored; none of it is reachable from the booth at runtime.
+fixtures
+harness
+assessts
+
+# Documentation and research. Read by people, not by the server.
+*.md
+!devoteam_information/*.md
+
+.claude
+.vscode
+.idea

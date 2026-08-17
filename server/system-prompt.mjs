@@ -32,12 +32,61 @@ export function buildLanguageDirective({ defaultLanguage = "ar", spokenLanguage 
 }
 
 /**
+ * Restate the length budget next to the question, not only in the system prompt.
+ *
+ * The system prompt has always asked for `answerWords`. It was not being obeyed: on
+ * twelve samples across four questions at a 22-word setting, answers averaged 41 words
+ * and reached 54 — nineteen seconds of speech for a budget of ten. At a booth that is
+ * the difference between an answer and a monologue, and it is a speed problem as real
+ * as any network latency: the visitor is waiting through all of it.
+ *
+ * Repeating the rule here, after the documents and immediately before the question,
+ * is what made it stick. Measured over the same twelve samples:
+ *
+ *                          mean   max   grounded
+ *   system prompt only      41     54     12/12
+ *   restated here           27     33     12/12
+ *
+ * The last sentence of the reminder is load-bearing and must not be trimmed. An
+ * earlier version said only "at most N words and two sentences" and produced a mean of
+ * 19 words — better still, and useless: citations collapsed to 0/12, because under a
+ * hard cap the model composes freely instead of grounding in the documents. The booth
+ * shows a sources panel and staff check answers against it; an uncited answer is
+ * exactly the one that might be wrong. Brevity has to be bought without spending that.
+ *
+ * Placement is also why this is free. Anything varying per question must sit after the
+ * cache breakpoint on the last document — see buildLanguageDirective above and
+ * corpus.mjs. Putting it in the system prompt would move it in front of 31k cached
+ * tokens and invalidate all of them.
+ */
+export function buildLengthDirective({ words }) {
+  return (
+    `[Keep it to about ${words} words and at most two sentences — it is spoken aloud to ` +
+    `someone standing up. Answer only what was asked, and offer more rather than saying ` +
+    `more. Base it on the documents above and cite them as usual; brevity does not relax ` +
+    `the grounding rule.]`
+  );
+}
+
+/**
  * @param {object}  opts
  * @param {object}  opts.settings  from server/settings.mjs
  */
+/**
+ * Spoken words per second, for turning a word budget into the number that matters.
+ *
+ * 1.4, not the 2.2 this used to assume. 2.2 is roughly an English reading rate; Arabic
+ * through the shipping ElevenLabs voice is much slower, and measured end to end a
+ * 22-word setting produces 17.7–20.7 seconds of audio rather than the ten the old
+ * constant predicted. Getting this wrong is not cosmetic — it is what the operator's
+ * "Short / Normal / Detailed" buttons are labelled from, so it was quietly promising
+ * half the answer length it delivered.
+ */
+export const WORDS_PER_SECOND = 1.4;
+
 export function buildSystemPrompt({ settings }) {
   const words = settings.answerWords;
-  const seconds = Math.round(words / 2.2);
+  const seconds = Math.round(words / WORDS_PER_SECOND);
 
   return `You are the Devoteam booth assistant at LEAP in Riyadh. Visitors walk up to a screen and talk to you. You are the first impression of Devoteam for people who may never have heard of the company.
 

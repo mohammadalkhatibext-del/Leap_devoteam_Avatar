@@ -1,0 +1,69 @@
+# Devoteam LEAP booth.
+#
+#   docker compose up --build          then open http://localhost:8080
+#   docker compose logs -f booth       watch it
+#   docker compose restart booth       the fix for almost everything
+#   docker compose down                stop
+#
+# Keys come from .env in this directory. It is gitignored and never baked into the
+# image — the image is the same artifact in every environment, and the environment
+# supplies the secrets.
+
+services:
+  booth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: devoteam-leap-booth:latest
+    container_name: leap-booth
+
+    # Always, not unless-stopped: this machine gets switched off at the end of the day
+    # and carried to a stand, and the booth has to come back on its own when it is
+    # powered on. Nobody should need to find a terminal at 8am.
+    restart: always
+
+    ports:
+      - "${BOOTH_PORT:-8080}:8080"
+
+    # Read as a file rather than listed key by key, so adding a vendor key to .env does
+    # not also require editing this file — a two-place change is a one-place mistake.
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      # Pin the container's clock to the venue's, so operator logs and the timestamps in
+      # the booth's own panel agree with the wall clock somebody is standing next to.
+      TZ: ${TZ:-Asia/Riyadh}
+
+    volumes:
+      # Operator settings, written by the admin page. A named volume rather than a bind
+      # mount: it survives `docker compose up --build`, it does not depend on host
+      # paths, and it means a redeploy mid-event does not silently reset the avatar and
+      # voice somebody spent the morning choosing.
+      - booth-data:/app/data
+
+    # An exhibition network is hostile and this port may be reachable from it. These
+    # cost nothing and remove the easy escalations.
+    security_opt:
+      - no-new-privileges:true
+
+    # A booth answering one visitor at a time does not need an unbounded share of a
+    # machine that may also be driving a display. Bounded, so a runaway process cannot
+    # take the screen down with it.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+    logging:
+      driver: json-file
+      options:
+        # Three days of an unattended booth will fill a disk with logs otherwise, and a
+        # full disk on the show floor looks exactly like a crashed booth.
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  booth-data:

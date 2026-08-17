@@ -94,46 +94,52 @@ export async function speak(
 }
 
 /**
- * Short acknowledgements the avatar speaks the instant a question ends, covering the
- * ~3.5 s it takes Claude to answer and the first sentence to synthesise. Without one
- * the visitor gets several seconds of a motionless face, which reads as a crash.
+ * REMOVED: the spoken "لحظة من فضلك" / "One moment, please" acknowledgement.
  *
- * These are deliberately **neutral**, not agreeable. "Certainly" would be a promise
- * the answer may be about to break — a filler precedes refusals too, and an avatar
- * that says "certainly!" and then declines looks worse than one that said nothing.
- * "One moment" is true regardless of what comes next.
+ * It existed to cover the gap between a visitor finishing their question and the
+ * avatar's first real word, which used to be around eight seconds — long enough that
+ * silence read as a crash. That gap is now roughly three, from three changes that
+ * removed the cause rather than masking it: ElevenLabs Flash in place of OpenAI TTS
+ * (~3.4 s to ~0.3 s per sentence), a clause-level first flush in server/claude.mjs
+ * (~1.7 s), and a shorter microphone hang-up in booth/src/mic.js (~0.45 s).
+ *
+ * Do not reintroduce it without re-measuring first. A filler is a real cost, not just
+ * a patch: it puts a sentence the visitor did not ask for in front of every answer,
+ * which at a booth is the difference between an assistant and a hold queue. The state
+ * is still legible without it — the badge reads "thinking" and the dot animates, which
+ * is honest about the wait without spending a second and a half of the visitor's
+ * attention saying nothing.
+ *
+ * Warm the engine at startup instead: see prewarmEngine below.
  */
-export const FILLERS = {
-  ar: ["لحظة من فضلك.", "لحظة واحدة."],
-  en: ["One moment, please.", "Just a second."],
-};
 
 /**
- * Render every filler once at startup so no visitor ever waits for one.
+ * Make the first visitor's question cost the same as the tenth.
  *
- * On a paid engine this is also the cheapest prewarm there is: two short phrases per
- * language, rendered once and reused for every visitor all day, instead of billing a
- * fresh "one moment please" on every single question.
+ * Not a filler — nothing rendered here is ever played. The point is the connection:
+ * a cold process pays DNS, TLS and the vendor's own cold start on its first synthesis,
+ * which measured as high as 2.2 s against a steady-state 0.3 s. Doing that once at
+ * boot moves the cost off the first visitor, who is usually the one being demoed to.
  *
  * @param {{ar?: string, en?: string}} voices  voice id per language
- * @param {string} engine  which TTS engine to render them on
+ * @param {string} engine  which TTS engine to warm
  */
-export async function prewarmFillers(voices = {}, engine = DEFAULT_TTS_ENGINE, model) {
+export async function prewarmEngine(voices = {}, engine = DEFAULT_TTS_ENGINE, model) {
   const jobs = [];
-  for (const [lang, texts] of Object.entries(FILLERS)) {
-    const voice = voices[lang] ?? DEFAULT_VOICE;
-    for (const t of texts) jobs.push(speak(t, { engine, voice, language: lang, model, cache: true }));
+  for (const [language, text] of [["ar", "جاهز."], ["en", "Ready."]]) {
+    // No cross-engine fallback. DEFAULT_VOICE is a *Microsoft* voice id, and handing
+    // "ar-SA-HamedNeural" to ElevenLabs is a hard 400 — which as a warm-up step means
+    // a booth that logs a scary error at startup for a voice nobody asked it to use.
+    // A language with no voice configured simply has nothing to warm.
+    const voice = voices[language];
+    if (!voice) continue;
+    jobs.push(speak(text, { engine, voice, language, model, cache: true }));
   }
-  await Promise.all(jobs);
-  return jobs.length;
-}
-
-/** A pre-rendered filler clip in the given language, or null if prewarm hasn't run. */
-export function filler({ language = "ar", voice = DEFAULT_VOICE, engine = DEFAULT_TTS_ENGINE, model } = {}) {
-  const texts = FILLERS[language] ?? FILLERS.ar;
-  const text = texts[Math.floor(Math.random() * texts.length)];
-  const pcm = clipCache.get(`${engine} ${model ?? ""} ${voice} ${text}`);
-  return pcm ? { pcm, text } : null;
+  // Warming must never be able to take the booth down: it runs at startup and after
+  // every settings save, and a wrong voice id is exactly the thing an operator is in
+  // the middle of correcting. The real synthesis path reports its own failures.
+  const done = await Promise.allSettled(jobs);
+  return done.filter((d) => d.status === "fulfilled").length;
 }
 
 /**

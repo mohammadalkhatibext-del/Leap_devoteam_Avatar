@@ -111,6 +111,25 @@ async function azureSynth(text, { voice, language }) {
 
 /* --------------------------------------------------------------- elevenlabs */
 
+/**
+ * The `/stream` endpoint, not the plain one — and the difference is not small.
+ *
+ * Both return the same bytes; the plain endpoint just holds them until synthesis has
+ * finished. Measured on one Arabic sentence, four runs each, time to the complete clip:
+ *
+ *              plain              /stream + optimize=3
+ *   turbo_v2_5   477–2198 ms        274–405 ms
+ *   flash_v2_5   330–358 ms         256–289 ms
+ *
+ * Note the plain-endpoint spread on turbo — over two seconds at the tail. That tail is
+ * the booth's worst case, not its average, and it lands on the first sentence of an
+ * answer where a visitor is watching a still face. Streaming flattens it.
+ *
+ * `optimize_streaming_latency` is deprecated in ElevenLabs' docs in favour of the
+ * model choice, and 3 rather than 4 deliberately: level 4 also disables the text
+ * normaliser, which is what turns "11,000" and "%" into spoken words. In Arabic that
+ * normaliser is doing real work and 20 ms is not worth losing it.
+ */
 async function elevenSynth(text, { voice, model }) {
   const key = env("ELEVENLABS_API_KEY");
   const voiceId = voice;
@@ -119,13 +138,14 @@ async function elevenSynth(text, { voice, model }) {
   // pcm_24000 returns RAW headerless PCM, already at our rate. Anything else would
   // need decoding on this side for no benefit.
   const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=pcm_24000`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream` +
+      `?output_format=pcm_24000&optimize_streaming_latency=3`,
     {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json" },
       body: JSON.stringify({
         text,
-        model_id: model || env("ELEVENLABS_MODEL_ID") || "eleven_multilingual_v2",
+        model_id: model || env("ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5",
       }),
     },
   );
@@ -199,7 +219,7 @@ export const TTS_ENGINES = {
     // beats one voice stretched across both.
     voiceMode: "pair",
     blurb:
-      "A native voice per language. Generally the most natural Arabic of the four — the only engine here that could move the voice score above the 3.5 everything else got.",
+      "A native voice per language, and by far the fastest: ~290 ms to a finished Arabic sentence against ~3.4 s for OpenAI. Also the most natural Arabic of the four. The booth default.",
     requires: ["ELEVENLABS_API_KEY"],
     cost: "billed per character, live",
     synth: elevenSynth,
@@ -209,8 +229,8 @@ export const TTS_ENGINES = {
     label: "OpenAI",
     voiceMode: "single",
     blurb:
-      "One voice for both languages. Its voices are English-first — they speak Arabic, but the accent may read as foreign to a Saudi visitor. Judge it by ear before trusting it.",
-    warn: "English-first voices. Listen for accent on Arabic.",
+      "One voice for both languages. English-first voices, and the slowest engine here by an order of magnitude: ~3.4 s per sentence, which a visitor spends watching a motionless face.",
+    warn: "~3.4 s per sentence — measured. Too slow for a live booth.",
     requires: ["OPENAI_API_KEY"],
     cost: "billed per character, live",
     synth: openaiSynth,
@@ -252,6 +272,31 @@ export async function listElevenVoices() {
   }));
 }
 
+/**
+ * The matched ElevenLabs voice pairs behind the `voiceGender` setting.
+ *
+ * A pair, not a voice, because the booth is bilingual and the mismatch an operator
+ * would actually create is a male Arabic voice next to a female English one — the same
+ * avatar apparently changing sex when a visitor switches language. Pinning both ends
+ * of the choice to one switch makes that unrepresentable.
+ *
+ * Ids verified against this account's GET /v2/voices on 2026-08-13; all four are
+ * `professional` category, which matters because **library** voices return
+ * `402 paid_plan_required` from the synthesis API on some plans while looking identical
+ * in the dashboard. The Arabic voices are the two labelled for the Gulf: Mohammed
+ * Almansari is `saudi`, Abrar Sabbah is `modern standard`.
+ */
+export const ELEVEN_VOICE_PAIRS = {
+  male: {
+    ar: { id: "2bnoa3wtrtcUW41TrSJM", name: "Mohammed Almansari" },
+    en: { id: "wAGzRVkxKEs8La0lmdrE", name: "Sully" },
+  },
+  female: {
+    ar: { id: "VwC51uc4PUblWEJSPzeo", name: "Abrar Sabbah" },
+    en: { id: "yj30vwTGJxSHezdAGsv9", name: "Jessa" },
+  },
+};
+
 /** Voices OpenAI ships. Fixed list — there is no catalogue endpoint to query. */
 export const OPENAI_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"];
 
@@ -288,8 +333,14 @@ export function voiceFor(settings, engineId, language) {
   const en = language === "en";
   if (engine.voiceMode === "microsoft") return en ? settings.voiceEn : settings.voiceAr;
   if (engine.id === "elevenlabs") {
+    // Order matters: an explicit per-language choice always wins, then the gender
+    // pair, then .env. The gender toggle sits in the middle rather than on top so
+    // that an operator who has deliberately picked a voice does not silently lose it
+    // the next time somebody flips the avatar's gender.
+    const pair = ELEVEN_VOICE_PAIRS[settings.voiceGender] ?? ELEVEN_VOICE_PAIRS.male;
     return (
       (en ? settings.elevenVoiceEn : settings.elevenVoiceAr) ||
+      (en ? pair.en.id : pair.ar.id) ||
       env(en ? "ELEVENLABS_VOICE_EN" : "ELEVENLABS_VOICE_AR")
     );
   }
@@ -307,16 +358,16 @@ export function voiceFor(settings, engineId, language) {
  * they matter for the fixture renderer rather than for live answers.
  */
 export const ELEVEN_MODELS = [
-  { id: "eleven_flash_v2_5", label: "Flash v2.5", note: "lowest latency — 32 languages" },
-  { id: "eleven_turbo_v2_5", label: "Turbo v2.5", note: "latency/quality middle — 32 languages" },
-  { id: "eleven_multilingual_v2", label: "Multilingual v2", note: "quality baseline — 29 languages" },
-  { id: "eleven_v3", label: "v3", note: "most expressive, slowest — 74 languages" },
+  { id: "eleven_flash_v2_5", label: "Flash v2.5", note: "~290 ms per sentence — the booth default" },
+  { id: "eleven_turbo_v2_5", label: "Turbo v2.5", note: "~280 ms, slightly richer, less consistent" },
+  { id: "eleven_multilingual_v2", label: "Multilingual v2", note: "~1130 ms — a second slower per sentence" },
+  { id: "eleven_v3", label: "v3", note: "~2210 ms — most expressive, far too slow for a live booth" },
 ];
 
 /** Which model the selected engine should run. Only ElevenLabs exposes a choice. */
 export function modelFor(settings, engineId) {
   if (engineId !== "elevenlabs") return undefined;
-  return settings.elevenModel || env("ELEVENLABS_MODEL_ID") || "eleven_multilingual_v2";
+  return settings.elevenModel || env("ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5";
 }
 
 /** Synthesise one clip on a named engine. Always returns 24 kHz s16le mono PCM. */
