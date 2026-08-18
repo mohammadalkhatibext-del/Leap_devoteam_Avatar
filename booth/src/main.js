@@ -444,6 +444,16 @@ async function askQuestion(question, spokenLanguage = null) {
       speakClip(fromBase64(pcm), text);
     });
 
+    /**
+     * Name the model, and the vendor too when it is not the usual one.
+     *
+     * Bare model ids are unambiguous while Claude is answering. They stop being so the
+     * moment a fallback rung takes over: "gpt-4o" alone on the metrics line does not
+     * say whether that was chosen or fallen back into.
+     */
+    const modelLabel = (d) =>
+      !d.provider || d.provider === "anthropic" ? (d.model ?? "") : `${d.provider}/${d.model}`;
+
     es.addEventListener("done", (e) => {
       const d = JSON.parse(e.data);
       showSources(d.citations, d.grounded);
@@ -452,8 +462,13 @@ async function askQuestion(question, spokenLanguage = null) {
       $("metrics").textContent =
         `speak at ${d.timing.firstSentenceMs}ms (first token ${d.timing.firstTokenMs}ms) · ` +
         `answer ${d.timing.totalMs}ms · cache read ${d.usage.cacheRead} · ` +
-        `out ${d.usage.output} · ${d.model ?? ""} · ${d.language}`;
+        `out ${d.usage.output} · ${modelLabel(d)} · ${d.language}`;
       log(`answered in ${d.language} — ${d.citations.length} citations`);
+      // An empty sources panel is normal from a non-Claude rung and suspicious from
+      // Claude. Without this line the two look identical on the operator screen.
+      if (d.attempts?.length) {
+        log(`fell through ${d.attempts.length} model(s) to ${d.provider} — see server log`);
+      }
       hasConversation = true;
       es.close();
       resolve();

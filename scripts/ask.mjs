@@ -41,7 +41,12 @@ async function run(question, expect) {
     onSentence: (s) => process.stdout.write(`  [${++spoken}] ${s}\n`),
   });
 
-  process.stdout.write(`\n   grounded: ${r.grounded ? `yes (${r.citations.length} citations)` : "NO CITATIONS"}\n`);
+  // Which rung answered, and what it walked past. Without this an OpenAI answer is
+  // just a Claude answer that inexplicably lost its citations.
+  process.stdout.write(`\n   answered by: ${r.provider}/${r.model}\n`);
+  for (const a of r.attempts) process.stdout.write(`     ✗ ${a.model ?? a.provider} — ${a.error}\n`);
+
+  process.stdout.write(`   grounded: ${r.grounded ? `yes (${r.citations.length} citations)` : "NO CITATIONS"}\n`);
   for (const c of r.citations.slice(0, 4)) {
     const quote = c.quote?.length > 90 ? c.quote.slice(0, 90) + "…" : c.quote;
     process.stdout.write(`     └ ${c.title} — "${quote}"\n`);

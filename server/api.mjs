@@ -20,6 +20,7 @@
  */
 
 import { ask } from "./claude.mjs";
+import { fallbackProviders } from "./fallback-answer.mjs";
 import { getSettings, saveSettings, resetSettings, DEFAULTS, ANSWER_MODELS } from "./settings.mjs";
 import {
   createSession,
@@ -459,6 +460,10 @@ export function boothApi({ log } = {}) {
           sttEngine: settings?.sttEngine ?? null,
           avatarProvider: settings?.avatarProvider ?? null,
           anthropicKey: !!process.env.ANTHROPIC_API_KEY,
+          // Which safety nets are actually strung, in the order they would be tried.
+          // Empty means a Claude failure goes straight to the operator's apology line,
+          // and that is worth knowing before an event rather than during one.
+          fallbackProviders: fallbackProviders(),
           uptimeSeconds: Math.round(process.uptime()),
         });
         return true;
@@ -516,6 +521,17 @@ export function boothApi({ log } = {}) {
           });
           await queue.drain();
 
+          // A booth that answered on a spare model looks identical to one that never
+          // stumbled, which is the point at the stand and a problem afterwards. Say it
+          // in the log — this is the only record that the primary model is failing,
+          // and at a live event nobody is watching a dashboard.
+          if (result.attempts.length) {
+            warn(
+              `answer chain fell through to ${result.provider}/${result.model} — ` +
+                result.attempts.map((a) => `${a.model ?? a.provider}: ${a.error}`).join(" | "),
+            );
+          }
+
           // Keep a degraded answer out of history. If it goes in, the model reads
           // its own English as precedent and every later answer in this visitor's
           // conversation degrades too — one slip becomes a ruined session.
@@ -540,6 +556,11 @@ export function boothApi({ log } = {}) {
             // model is a settings choice now, and "why is it suddenly slower" is a
             // question whose answer is usually this field.
             model: result.model,
+            // Which vendor wrote it, and what it had to walk past to get there. An
+            // answer with an empty sources panel is normal from the OpenAI rung and
+            // suspicious from Claude; without this field they are indistinguishable.
+            provider: result.provider,
+            attempts: result.attempts,
             language: answerLanguage,
             timing: { ...result.timing, wallMs: Date.now() - t0 },
             usage: result.usage,
@@ -567,7 +588,13 @@ export function boothApi({ log } = {}) {
               }
             }
           }
-          send("failed", { error: err.message, fallback: fb?.enabled ?? false });
+          send("failed", {
+            error: err.message,
+            // Every rung that was tried, so the apology line can be traced to a cause
+            // rather than to "ask failed". Empty when the failure was not the chain's.
+            attempts: err.attempts ?? [],
+            fallback: fb?.enabled ?? false,
+          });
         }
         res.end();
         return true;
