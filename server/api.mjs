@@ -29,7 +29,7 @@ import {
   listAkoolAvatars,
   boothAvatars,
 } from "./providers.mjs";
-import { ensureTts, prewarmEngine, speak, SpeechQueue, SAMPLE_RATE, toWav } from "./tts.mjs";
+import { prewarmEngine, speak, SpeechQueue, SAMPLE_RATE, toWav } from "./tts.mjs";
 import {
   listTtsEngines,
   voiceFor,
@@ -38,11 +38,8 @@ import {
   TTS_ENGINES,
   OPENAI_VOICES,
   ELEVEN_MODELS,
-  ELEVEN_VOICE_PAIRS,
 } from "./tts-engines.mjs";
 import { transcribe, transcribeAll, listSttEngines } from "./stt-engines.mjs";
-
-const TTS_PORT = Number(process.env.TTS_PORT || 8765);
 
 export { SAMPLE_RATE };
 
@@ -88,10 +85,10 @@ const historyFor = (sid) => sessions.get(sid) ?? [];
 /**
  * Warm the connection to whichever TTS engine is currently selected.
  *
- * The Microsoft engines take one voice per language; the multilingual ones take one
- * voice for both, so `voiceFor` is asked per language rather than reading the two
- * settings fields directly — otherwise switching to ElevenLabs would warm the *edge*
- * path and the first visitor would pay the cold start anyway.
+ * `voiceFor` is asked per language rather than read out of the settings directly.
+ * Both engines answer with the same voice for either language today, but asking keeps
+ * the warm path identical to the answer path — and it was a mismatch between those two
+ * that once warmed one engine while the booth spoke through another.
  */
 async function warmEngine(settings) {
   const engine = settings.ttsEngine;
@@ -103,15 +100,16 @@ async function warmEngine(settings) {
 }
 
 /**
- * Bring up the TTS sidecar and keep it up, for as long as this process lives.
+ * Warm the selected TTS engine at startup, and keep it warm.
  *
- * Only the edge engine needs it — the other three are HTTP APIs. Starting Python for a
- * booth configured on ElevenLabs would fail loudly on any machine without Python
- * installed, which includes the production container, and report a broken booth that
- * is in fact perfectly healthy.
+ * This used to also supervise a Python sidecar, which only edge-tts needed. edge-tts
+ * is gone — both remaining engines are HTTP APIs — so the Python process, and the
+ * "is it still alive" watchdog around it, went with it. What is left is a periodic
+ * re-warm, which matters because a vendor will drop an idle connection during a quiet
+ * hour at a stand and the next visitor would otherwise pay the cold start.
  *
- * Returns a stop function, so a caller that owns a lifecycle can shut the watchdog
- * down rather than leaking a timer.
+ * Returns a stop function, so a caller that owns a lifecycle can shut the timer down
+ * rather than leaking it.
  */
 export function startTtsSupervisor({ log } = {}) {
   const info = log?.info ?? (() => {});
@@ -120,32 +118,14 @@ export function startTtsSupervisor({ log } = {}) {
 
   const start = () =>
     getSettings()
-      .then(async (settings) => {
-        if (settings.ttsEngine === "edge") await ensureTts({ log: info });
-        return warmEngine(settings);
-      })
+      .then((settings) => warmEngine(settings))
       .then((n) => info(`TTS ready — ${n} voices warm`))
       .catch((err) => error(`TTS unavailable: ${err.message}`));
 
   start();
 
-  // The sidecar is a separate process and can die during an event. Nobody is watching,
-  // so bring it back rather than waiting for someone to notice the avatar has gone
-  // quiet. Only meaningful for edge; for the HTTP engines this is a cheap no-op that
-  // also re-warms a connection the vendor may have dropped.
-  const timer = setInterval(async () => {
-    const settings = await getSettings().catch(() => null);
-    if (settings?.ttsEngine !== "edge") return;
-    try {
-      const r = await fetch(`http://127.0.0.1:${TTS_PORT}/health`, {
-        signal: AbortSignal.timeout(1500),
-      });
-      if (r.ok) return;
-    } catch {
-      /* fall through to restart */
-    }
-    warn("TTS sidecar not responding — restarting it");
-    start();
+  const timer = setInterval(() => {
+    start().catch(() => warn("TTS re-warm failed — the next answer pays the cold start"));
   }, 20_000);
   timer.unref?.();
 
@@ -258,16 +238,6 @@ export function boothApi({ log } = {}) {
         return true;
       }
 
-      if (url.pathname === "/api/voices") {
-        try {
-          const r = await fetch(`http://127.0.0.1:${TTS_PORT}/voices`);
-          json(res, 200, await r.json());
-        } catch {
-          json(res, 200, { voices: [] }); // sidecar down — admin still loads
-        }
-        return true;
-      }
-
       // ---- speech to text -------------------------------------------------
       // The browser posts the recorded clip; the vendor key never leaves here.
       if (url.pathname === "/api/stt" && req.method === "POST") {
@@ -300,7 +270,6 @@ export function boothApi({ log } = {}) {
           engines: listTtsEngines(),
           openaiVoices: OPENAI_VOICES,
           elevenModels: ELEVEN_MODELS,
-          elevenPairs: ELEVEN_VOICE_PAIRS,
         });
         return true;
       }
@@ -367,10 +336,7 @@ export function boothApi({ log } = {}) {
           ...savedSettings,
           ...Object.fromEntries(
             [
-              "voiceAr",
-              "voiceEn",
-              "elevenVoiceAr",
-              "elevenVoiceEn",
+              "elevenVoice",
               "elevenModel",
               "openaiVoice",
               // The gender toggle resolves to a voice, so the lab has to honour it or

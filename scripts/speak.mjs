@@ -28,7 +28,7 @@ const { loadEnvAndReport } = await import("../server/env.mjs");
 loadEnvAndReport(path.join(ROOT, ".env"));
 
 const { ask } = await import("../server/claude.mjs");
-const { ensureTts, prewarmEngine, SpeechQueue, toWav, SAMPLE_RATE } = await import(
+const { prewarmEngine, SpeechQueue, toWav, SAMPLE_RATE } = await import(
   "../server/tts.mjs"
 );
 const { getSettings } = await import("../server/settings.mjs");
@@ -45,10 +45,6 @@ const model = modelFor(settings, engine);
 console.log(`\nmodel:  ${settings.answerModel}`);
 console.log(`voice:  ${TTS_ENGINES[engine]?.label ?? engine} · ${voice} @ ${SAMPLE_RATE} Hz`);
 if (model) console.log(`        ${model}`);
-
-// edge is the only engine needing the Python sidecar; starting it for the others would
-// print a misleading failure on a machine that has no Python at all.
-if (engine === "edge") console.log(await ensureTts({ log: (m) => console.log(`  ${m}`) }));
 
 // Warm the connection first, exactly as the booth does at startup. Without this the
 // first measurement includes DNS, TLS and the vendor's cold start — which is real, but

@@ -1,71 +1,15 @@
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { synth, SAMPLE_RATE, DEFAULT_TTS_ENGINE } from "./tts-engines.mjs";
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const SERVICE = path.join(ROOT, "server", "tts_service.py");
-
-const PORT = Number(process.env.TTS_PORT || 8765);
-const BASE = `http://127.0.0.1:${PORT}`;
 export { SAMPLE_RATE };
 
-/** SCORING.md Step 1 winner. Male, to match the Anam persona `Faisal - Cultural Guide`. */
-export const DEFAULT_VOICE = process.env.TTS_VOICE || "ar-SA-HamedNeural";
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function healthy() {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(500) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-let starting = null;
-
 /**
- * Bring the Python TTS sidecar up if it isn't already.
+ * The male ElevenLabs voice, as a last-resort parameter default.
  *
- * Idempotent and safe to call from anywhere: if someone already started it in their
- * own terminal (handy for watching the synthesis log), we attach to that one rather
- * than fighting over the port.
+ * It used to be a Microsoft voice id, from when edge-tts and Azure were selectable.
+ * Both are gone, and a Microsoft id handed to ElevenLabs is not a wrong voice — it is
+ * a 404 and a silent avatar, the worst way for a stale default to fail.
  */
-export async function ensureTts({ log = () => {} } = {}) {
-  if (await healthy()) return "already running";
-  // A previous attempt that finished is not a reason to refuse a new one: the sidecar
-  // is a separate process and can die at any point during an event. Without clearing
-  // this, the booth would never recover from a crashed sidecar short of a restart.
-  starting = null;
-  return (starting ??= (async () => {
-    log(`starting TTS sidecar on :${PORT}…`);
-    const proc = spawn("python", [SERVICE, "--port", String(PORT)], {
-      cwd: ROOT,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    proc.stdout.on("data", (b) => log(`[tts] ${String(b).trimEnd()}`));
-    proc.stderr.on("data", (b) => log(`[tts] ${String(b).trimEnd()}`));
-    proc.on("exit", (code) => log(`[tts] exited (${code})`));
-
-    // The sidecar outlives whoever started it, so nothing here may hold the parent's
-    // event loop open. Unreffing the child alone is not enough — the three stdio
-    // pipes are refed handles of their own, and leaving them attached is why a CLI
-    // that finished its work would still hang instead of exiting.
-    proc.unref?.();
-    for (const s of [proc.stdout, proc.stderr, proc.stdin]) s?.unref?.();
-
-    for (let i = 0; i < 40; i++) {
-      if (await healthy()) return "started";
-      await sleep(250);
-    }
-    throw new Error(
-      `TTS sidecar did not come up on :${PORT}. Run it manually to see why:\n` +
-        `  python server/tts_service.py`,
-    );
-  })());
-}
+export const DEFAULT_VOICE = process.env.TTS_VOICE || "2bnoa3wtrtcUW41TrSJM";
 
 const clipCache = new Map();
 
@@ -127,7 +71,7 @@ export async function speak(
 export async function prewarmEngine(voices = {}, engine = DEFAULT_TTS_ENGINE, model) {
   const jobs = [];
   for (const [language, text] of [["ar", "جاهز."], ["en", "Ready."]]) {
-    // No cross-engine fallback. DEFAULT_VOICE is a *Microsoft* voice id, and handing
+    // No cross-engine fallback. DEFAULT_VOICE is an *ElevenLabs* voice id, and handing
     // "ar-SA-HamedNeural" to ElevenLabs is a hard 400 — which as a warm-up step means
     // a booth that logs a scary error at startup for a voice nobody asked it to use.
     // A language with no voice configured simply has nothing to warm.

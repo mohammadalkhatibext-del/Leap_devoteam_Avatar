@@ -14,7 +14,6 @@
     "check:akool": "node scripts/check-akool.mjs",
     "check:heygen": "node scripts/check-heygen.mjs",
     "check:stt": "node scripts/stt-check.mjs",
-    "check:voices": "node scripts/voice-check.mjs",
     "harness": "npm --prefix harness run dev",
     "postinstall": "npm --prefix harness install --no-audit --no-fund"
   },

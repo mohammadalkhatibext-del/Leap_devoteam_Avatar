@@ -97,25 +97,11 @@
          Label on the left, current value on the right, grouped in the same order
          as the cards below. Rows rather than a paragraph because this is read by
          scanning for one setting, not from the beginning. */
-      /* Two columns, because the five groups are short and stacking them made an
-         overview taller than the card it summarises.
-         Columns rather than a grid: grid aligns rows across tracks, which left a
-         one-row group padded out to the height of a four-row one beside it. Columns
-         just flow, so each group takes the height it needs. */
-      .summary {
-        column-count: 2; column-gap: 32px; font-size: var(--text-sm);
-      }
-      @media (max-width: 700px) { .summary { column-count: 1; } }
-      .sum-group {
-        break-inside: avoid; -webkit-column-break-inside: avoid;
-        min-width: 0; padding: 7px 0 8px;
-      }
-      .sum-group > h3 {
-        font-size: 10px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: .09em; color: var(--text-muted); margin: 0 0 4px;
-        padding-bottom: 4px; border-bottom: 1px solid var(--border-soft);
-      }
-      .sum-group dl { margin: 0; }
+      /* One column. It was two, laid out as five titled groups, back when this
+         summarised every card on the page; at five plain rows a second column and the
+         group headings are both scaffolding around nothing. */
+      .summary { font-size: var(--text-sm); }
+      .summary dl { margin: 0; }
       .sum-row {
         display: flex; justify-content: space-between; gap: 14px;
         align-items: baseline; padding: 2px 0; line-height: 1.4;
@@ -364,37 +350,22 @@
             <span class="chevron">▾</span>
           </button>
           <div class="advanced-panel" id="ttsAdvancedPanel" hidden>
-            <div class="field" id="microsoftVoiceFields" hidden>
-             <label for="voiceAr">Arabic voice</label>
-             <select id="voiceAr"></select>
-            </div>
-            <div class="field" id="voiceEnField" hidden>
-             <label for="voiceEn">English voice</label>
-             <select id="voiceEn"></select>
-            </div>
-
             <div id="elevenVoiceFields" hidden>
-             <div class="grid2">
-               <div class="field">
-                 <label for="elevenVoiceAr">Arabic voice</label>
-                 <select id="elevenVoiceAr"></select>
-               </div>
-               <div class="field">
-                 <label for="elevenVoiceEn">English voice</label>
-                 <select id="elevenVoiceEn"></select>
-               </div>
+             <div class="field">
+               <label for="elevenVoice">VOICE</label>
+               <select id="elevenVoice"></select>
              </div>
              <div class="field">
                <label for="elevenModel">MODEL</label>
                <select id="elevenModel"></select>
              </div>
-             <p class="hint" id="elevenHint">Supports natural Arabic and English voices.</p>
+             <p class="hint" id="elevenHint">One voice speaks both Arabic and English.</p>
             </div>
 
             <div class="field" id="openaiVoiceFields" hidden>
              <label for="openaiVoice">VOICE</label>
              <select id="openaiVoice"></select>
-             <p class="hint">Supports both Arabic and English using the selected voice.</p>
+             <p class="hint">One voice speaks both Arabic and English.</p>
             </div>
           </div>
         </div>

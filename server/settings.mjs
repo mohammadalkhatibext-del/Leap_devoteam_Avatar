@@ -1,4 +1,5 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { TTS_ENGINES, DEFAULT_TTS_ENGINE } from "./tts-engines.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -95,8 +96,9 @@ export const DEFAULTS = {
    * finished clip: ElevenLabs Flash v2.5 ~290 ms, Turbo v2.5 ~280 ms, OpenAI
    * gpt-4o-mini-tts ~3420 ms. Since the booth synthesises the FIRST sentence before
    * the avatar can open its mouth, that difference is ~3 s of a visitor staring at a
-   * motionless face on every single question. edge-tts is also disqualified for LEAP
-   * on its own terms — undocumented endpoint. server/tts-engines.mjs holds the detail.
+   * motionless face on every single question. edge-tts and Azure used to be here too;
+   * both were removed, edge because an undocumented endpoint has no business on a show
+   * floor. server/tts-engines.mjs holds the detail.
    *
    * It is also the provider the admin page assumes: the operator picks the provider
    * first, then the voice styling.
@@ -124,19 +126,14 @@ export const DEFAULTS = {
    */
   answerModel: "claude-sonnet-5",
 
-  // One voice per language. Used by the two Microsoft engines (edge and Azure), which
-  // share a voice catalogue — a voice picked on one works unchanged on the other.
-  voiceAr: "ar-SA-HamedNeural",
-  voiceEn: "en-US-GuyNeural",
-
   /**
    * Which gender the booth speaks in: "male" | "female".
    *
-   * One switch rather than four voice ids, because the thing an operator actually
+   * One switch rather than a list of voice ids, because the thing an operator actually
    * decides is "the avatar on screen is a woman" — and the voice has to agree with the
-   * face in both languages at once. Setting it picks a matched ElevenLabs pair
-   * (see ELEVEN_VOICE_PAIRS in server/tts-engines.mjs): male is Mohammed Almansari in
-   * Arabic and Sully in English, female is Abrar Sabbah and Jessa.
+   * face. Setting it picks one ElevenLabs voice that speaks both languages
+   * (see ELEVEN_VOICES in server/tts-engines.mjs): male is Mohammed Almansari,
+   * female is Abrar Sabbah.
    *
    * **Female, because the avatar that actually ships is female.** ANAM_AVATAR_ID in
    * .env is 278fec65…, which `GET /v1/avatars` names **Dania** — not the "Faisal -
@@ -148,28 +145,28 @@ export const DEFAULTS = {
    *
    * Change these two together or not at all.
    *
-   * The two fields below still win when set, so an operator who wants a specific
-   * voice is never boxed in by the toggle.
+   * The field below still wins when set, so an operator who wants a specific voice is
+   * never boxed in by the toggle.
    */
   voiceGender: "female",
 
   /**
-   * ElevenLabs keeps its own pair, because its voice ids are nothing like the
-   * Microsoft ones and a native Arabic voice plus a native English voice beats one
-   * multilingual voice stretched across both.
+   * One ElevenLabs voice, spoken in both Arabic and English.
    *
-   * These are pinned to the preferred male pair — Mohammed Almansari (Saudi) for
-   * Arabic, Sully for English. Verified against GET /v1/voices rather than by name:
-   * the account returns "Mohammed Almansari" with a leading space, so a name lookup
-   * silently missed it and the booth spoke as Mazen Lawand instead.
+   * It was a pair — a native Arabic voice and a native English one — on the reasoning
+   * that a native speaker of each beats one voice stretched across both. True read
+   * side by side, wrong in the room: a visitor who asks in Arabic and follows up in
+   * English heard the avatar become a different person mid-conversation, and the two
+   * halves could be edited apart with nothing on the page saying they had drifted.
    *
-   * Because they are set rather than empty, they win over voiceGender above, and
-   * applyRuntimeDefaults() refills them whenever an operator clears them. The "empty
-   * means follow voiceGender, then ELEVENLABS_VOICE_AR / _EN from .env" path is
-   * therefore unreachable while these defaults stand; clear both here to get it back.
+   * Empty is the normal state and means "follow voiceGender above" — Mohammed
+   * Almansari for male, Abrar Sabbah for female, both from ELEVEN_VOICES. Set it only
+   * to pin a specific voice against the toggle. Any value here is verified against
+   * GET /v1/voices by id rather than by name: the account returns "Mohammed Almansari"
+   * with a leading space, so a name lookup silently missed it and the booth spoke as
+   * Mazen Lawand instead.
    */
-  elevenVoiceAr: "2bnoa3wtrtcUW41TrSJM",
-  elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
+  elevenVoice: "",
 
   /**
    * ElevenLabs model. Latency is a feature at a booth — the visitor is standing there.
@@ -298,8 +295,9 @@ function applyRuntimeDefaults(settings) {
   if (!next.ttsEngine) next.ttsEngine = DEFAULTS.ttsEngine;
   if (!next.sttEngine) next.sttEngine = DEFAULTS.sttEngine;
   if (!next.openaiVoice) next.openaiVoice = DEFAULTS.openaiVoice;
-  if (!next.elevenVoiceAr) next.elevenVoiceAr = DEFAULTS.elevenVoiceAr;
-  if (!next.elevenVoiceEn) next.elevenVoiceEn = DEFAULTS.elevenVoiceEn;
+  // elevenVoice is deliberately absent here. Empty is its normal, meaningful state —
+  // "follow the Male/Female switch" — and refilling it would pin the male voice over
+  // the gender toggle, which is exactly the bug the old pinned pair caused.
 
   return next;
 }
@@ -355,6 +353,12 @@ export async function saveSettings(patch) {
   if (next.voiceGender !== "male" && next.voiceGender !== "female") {
     next.voiceGender = DEFAULTS.voiceGender;
   }
+
+  // data/settings.json outlives the code that wrote it, and a booth that ran on
+  // edge-tts still has "edge" saved in it. That id no longer resolves to an engine, so
+  // leaving it would mean a silent avatar at a stand rather than a visible mistake on
+  // this page. Fall back to the default the same way an unknown model id does.
+  if (!TTS_ENGINES[next.ttsEngine]) next.ttsEngine = DEFAULT_TTS_ENGINE;
 
   await mkdir(path.dirname(FILE), { recursive: true });
   await writeFile(FILE, JSON.stringify(next, null, 2), "utf8");

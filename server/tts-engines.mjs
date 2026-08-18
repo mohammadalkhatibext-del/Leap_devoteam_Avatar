@@ -2,14 +2,18 @@
  * TTS engine registry — text in, raw 24 kHz signed-16-bit mono PCM out.
  *
  * ────────────────────────────────────────────────────────────────────────────────
- * ONE OUTPUT FORMAT, FOUR VENDORS
+ * ONE OUTPUT FORMAT, EVERY VENDOR
  *
  * Every engine here returns byte-compatible PCM at 24 kHz. That is not a coincidence
- * we got lucky with — it is the reason this file can exist at all. Azure serves
- * `raw-24khz-16bit-mono-pcm`, ElevenLabs serves `pcm_24000`, OpenAI serves
- * `response_format: "pcm"` (24 kHz by definition), and the edge-tts sidecar decodes
- * its MP3 to the same rate. So `SpeechQueue`, the SSE `audio` events, the Anam
- * adapter and the Simli resampler are all completely unaware of which engine ran.
+ * we got lucky with — it is the reason this file can exist at all. ElevenLabs serves
+ * `pcm_24000` and OpenAI serves `response_format: "pcm"` (24 kHz by definition), so
+ * `SpeechQueue`, the SSE `audio` events, the Anam adapter and the Simli resampler are
+ * all completely unaware of which engine ran.
+ *
+ * There were four vendors once. edge-tts and Azure were removed along with their
+ * per-language Microsoft voice ids — edge because an undocumented endpoint had no
+ * business anywhere near a show floor, and it was still reachable from the admin
+ * page's "Compare Providers" button long after it stopped being selectable.
  *
  * The practical payoff: switching engines is a settings change, and comparing them
  * is a controlled experiment — identical text, identical format, only the voice
@@ -20,7 +24,6 @@
 const env = (k) => process.env[k]?.trim() || "";
 
 export const SAMPLE_RATE = 24000;
-const TTS_PORT = Number(process.env.TTS_PORT || 8765);
 
 /* --------------------------------------------------------------- silence trim */
 
@@ -29,15 +32,14 @@ const FRAME = SAMPLE_RATE / 100; // 10 ms
 const PAD = (SAMPLE_RATE * 40) / 1000; // keep 40 ms so the first consonant survives
 
 /**
- * Strip leading/trailing silence, matching what the Python sidecar already does to
- * edge-tts output.
+ * Strip leading/trailing silence.
  *
  * Answers are synthesised one sentence at a time and played back to back, so any
  * padding a vendor adds becomes a dead gap between every sentence — several seconds
  * across a full answer, during which a photorealistic face sits motionless and reads
- * as a crash. The sidecar trims its own output; this covers the three HTTP engines so
- * every engine's clips butt up against each other the same way. Without it, switching
- * engines would silently change answer pacing and make the comparison unfair.
+ * as a crash. This covers both engines, so their clips butt up against each other
+ * the same way. Without it, switching engines would silently change answer pacing and
+ * make the comparison unfair.
  */
 function trimSilence(pcm) {
   const samples = new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.length / 2));
@@ -61,52 +63,6 @@ function trimSilence(pcm) {
   const lo = Math.max(0, first - PAD);
   const hi = Math.min(samples.length, last + FRAME + PAD);
   return Buffer.from(pcm.buffer, pcm.byteOffset + lo * 2, (hi - lo) * 2);
-}
-
-/* ------------------------------------------------------------------ edge-tts */
-
-async function edgeSynth(text, { voice }) {
-  const res = await fetch(`http://127.0.0.1:${TTS_PORT}/tts`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, voice }),
-  });
-  if (!res.ok) {
-    throw new Error(`edge-tts ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
-  }
-  // The sidecar already trimmed this one.
-  return Buffer.from(await res.arrayBuffer());
-}
-
-/* -------------------------------------------------------------------- azure */
-
-const xml = (s) =>
-  String(s).replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c],
-  );
-
-async function azureSynth(text, { voice, language }) {
-  const key = env("AZURE_SPEECH_KEY");
-  const region = env("AZURE_SPEECH_REGION") || "uaenorth";
-
-  // The locale on <speak> has to match the voice, not the detected language — a
-  // ar-SA voice inside an en-US envelope is rejected outright by the service.
-  const locale = voice?.split("-").slice(0, 2).join("-") || (language === "en" ? "en-US" : "ar-SA");
-
-  const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-    method: "POST",
-    headers: {
-      "Ocp-Apim-Subscription-Key": key,
-      "Content-Type": "application/ssml+xml",
-      "X-Microsoft-OutputFormat": "raw-24khz-16bit-mono-pcm",
-      "User-Agent": "devoteam-leap-booth",
-    },
-    body: `<speak version="1.0" xml:lang="${locale}"><voice name="${xml(voice)}">${xml(text)}</voice></speak>`,
-  });
-  if (!res.ok) {
-    throw new Error(`Azure ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
-  }
-  return trimSilence(Buffer.from(await res.arrayBuffer()));
 }
 
 /* --------------------------------------------------------------- elevenlabs */
@@ -182,44 +138,21 @@ async function openaiSynth(text, { voice }) {
 /**
  * `voiceMode` tells the admin page which voice control to show:
  *
- *   "microsoft"  two pickers (Arabic + English) of Microsoft neural voice ids.
- *                edge and Azure serve the same voice catalogue, so a voice chosen
- *                for one works unchanged on the other — which is exactly what makes
- *                the Azure swap a drop-in rather than a re-scoring exercise.
  *   "single"     one voice for both languages; the model is multilingual and the
- *                same voice speaks Arabic and English.
+ *                same voice speaks Arabic and English. Both remaining engines are
+ *                "single", so the admin page has exactly one voice picker.
  */
 export const TTS_ENGINES = {
-  edge: {
-    id: "edge",
-    label: "edge-tts",
-    voiceMode: "microsoft",
-    blurb:
-      "Microsoft neural voices through the undocumented Edge read-aloud endpoint. Free and needs no card — but it is evaluation-only and must not run on the show floor.",
-    warn: "Undocumented endpoint. Fine for building, not for LEAP.",
-    requires: [],
-    cost: "free",
-    synth: edgeSynth,
-  },
-  azure: {
-    id: "azure",
-    label: "Azure Speech",
-    voiceMode: "microsoft",
-    blurb:
-      "The same neural voices as edge-tts, served legitimately. F0 free tier covers 0.5M characters/month. This is the production path.",
-    requires: ["AZURE_SPEECH_KEY", "AZURE_SPEECH_REGION"],
-    cost: "0.5M chars/month free (F0)",
-    synth: azureSynth,
-  },
   elevenlabs: {
     id: "elevenlabs",
     label: "ElevenLabs",
-    // A voice per language, not one multilingual voice: the account carries a
-    // native Arabic voice and a native English one, and a native speaker of each
-    // beats one voice stretched across both.
-    voiceMode: "pair",
+    // One voice for both languages. It used to be a native voice per language, which
+    // read better side by side and worse in the room: a visitor who asks in Arabic and
+    // follows up in English heard the avatar change person mid-conversation. Both Gulf
+    // voices below speak English well enough that keeping one person on screen wins.
+    voiceMode: "single",
     blurb:
-      "A native voice per language, and by far the fastest: ~290 ms to a finished Arabic sentence against ~3.4 s for OpenAI. Also the most natural Arabic of the four. The booth default.",
+      "One voice across both languages, and by far the fastest: ~290 ms to a finished Arabic sentence against ~3.4 s for OpenAI. Also the most natural Arabic here. The booth default.",
     requires: ["ELEVENLABS_API_KEY"],
     cost: "billed per character, live",
     synth: elevenSynth,
@@ -286,15 +219,9 @@ export async function listElevenVoices() {
  * in the dashboard. The Arabic voices are the two labelled for the Gulf: Mohammed
  * Almansari is `saudi`, Abrar Sabbah is `modern standard`.
  */
-export const ELEVEN_VOICE_PAIRS = {
-  male: {
-    ar: { id: "2bnoa3wtrtcUW41TrSJM", name: "Mohammed Almansari" },
-    en: { id: "wAGzRVkxKEs8La0lmdrE", name: "Sully" },
-  },
-  female: {
-    ar: { id: "VwC51uc4PUblWEJSPzeo", name: "Abrar Sabbah" },
-    en: { id: "yj30vwTGJxSHezdAGsv9", name: "Jessa" },
-  },
+export const ELEVEN_VOICES = {
+  male: { id: "2bnoa3wtrtcUW41TrSJM", name: "Mohammed Almansari" },
+  female: { id: "VwC51uc4PUblWEJSPzeo", name: "Abrar Sabbah" },
 };
 
 /** Voices OpenAI ships. Fixed list — there is no catalogue endpoint to query. */
@@ -323,26 +250,20 @@ export function listTtsEngines() {
 /**
  * Which voice id this engine should use for this language.
  *
- * Kept here rather than in the caller because the answer is engine-shaped: the
- * Microsoft engines take a different id per language, the multilingual ones take one
- * id for both. A caller that had to know which is which would have to be updated
- * every time an engine is added.
+ * Kept here rather than in the caller because the answer is engine-shaped. Both
+ * engines now take one id for both languages, so `language` is accepted and ignored
+ * — the parameter stays because callers pass it and because an engine that needs it
+ * again should not have to change every call site.
  */
 export function voiceFor(settings, engineId, language) {
   const engine = TTS_ENGINES[engineId] ?? TTS_ENGINES[DEFAULT_TTS_ENGINE];
-  const en = language === "en";
-  if (engine.voiceMode === "microsoft") return en ? settings.voiceEn : settings.voiceAr;
   if (engine.id === "elevenlabs") {
-    // Order matters: an explicit per-language choice always wins, then the gender
-    // pair, then .env. The gender toggle sits in the middle rather than on top so
-    // that an operator who has deliberately picked a voice does not silently lose it
-    // the next time somebody flips the avatar's gender.
-    const pair = ELEVEN_VOICE_PAIRS[settings.voiceGender] ?? ELEVEN_VOICE_PAIRS.male;
-    return (
-      (en ? settings.elevenVoiceEn : settings.elevenVoiceAr) ||
-      (en ? pair.en.id : pair.ar.id) ||
-      env(en ? "ELEVENLABS_VOICE_EN" : "ELEVENLABS_VOICE_AR")
-    );
+    // `language` is deliberately unused. One voice speaks both, so there is no
+    // per-language choice left to fall out of step — which was the point of dropping
+    // the pair: the two halves could drift apart and nothing on the page said so.
+    // Order still matters: an explicit choice wins, then the gender voice, then .env.
+    const voice = ELEVEN_VOICES[settings.voiceGender] ?? ELEVEN_VOICES.male;
+    return settings.elevenVoice || voice.id || env("ELEVENLABS_VOICE_AR");
   }
   if (engine.id === "openai") return settings.openaiVoice || "alloy";
   return "";

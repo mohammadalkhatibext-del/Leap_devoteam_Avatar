@@ -23,18 +23,17 @@ const safeText = (id, text) => {
 let saved = null; // last known server state, for Undo
 
 /**
- * Display names for the gender pairs, so the summary can say who a visitor will hear
- * when the override fields are empty. Mirrors ELEVEN_VOICE_PAIRS in
- * server/tts-engines.mjs, which is the authority — this copy exists only because the
- * summary line renders before /api/tts/eleven-voices has necessarily answered, and a
- * summary that says "—" for a second on load reads as a misconfigured booth.
+ * Display names for the gender voices, so the summary can say who a visitor will hear
+ * when the override field is empty. Mirrors ELEVEN_VOICES in server/tts-engines.mjs,
+ * which is the authority — this copy exists only because the summary line renders
+ * before /api/tts/eleven-voices has necessarily answered, and a summary that says "—"
+ * for a second on load reads as a misconfigured booth.
  */
 const ELEVEN_PAIRS = {
   male: { ar: "Mohammed Almansari", en: "Sully" },
   female: { ar: "Abrar Sabbah", en: "Jessa" },
 };
 
-let voices = [];
 let providers = [];
 let ttsEngines = [];
 let sttEngines = [];
@@ -57,21 +56,26 @@ const DEFAULT_SETTINGS = {
     messageAr: "أعتذر، النظام ما يقدر يجاوب الحين. تفضلوا، أحد زملائي هنا في الجناح يسعده مساعدتكم.",
     messageEn: "I'm sorry — I can't answer right now. One of my colleagues here at the stand would be glad to help you.",
   },
-  elevenVoiceAr: "2bnoa3wtrtcUW41TrSJM",
-  elevenVoiceEn: "wAGzRVkxKEs8La0lmdrE",
+  elevenVoice: "",
   openaiVoice: "ash",
 };
+/**
+ * One voice per gender, spoken in both languages.
+ *
+ * These mirror ELEVEN_VOICES in server/tts-engines.mjs and must not drift from it:
+ * this page decides what the operator sees, that file decides what the booth says,
+ * and the two disagreeing is invisible until a visitor hears the wrong voice.
+ */
 const TTS_DEFAULT_VOICES = {
   elevenlabs: {
-    // Mohammed Almansari (Saudi, male) for Arabic, Sully for English.
-    male: { ar: "2bnoa3wtrtcUW41TrSJM", en: "wAGzRVkxKEs8La0lmdrE" },
-    female: { ar: "VwC51uc4PUblWEJSPzeo", en: "yj30vwTGJxSHezdAGsv9" },
+    male: "2bnoa3wtrtcUW41TrSJM", // Mohammed Almansari (Saudi)
+    female: "VwC51uc4PUblWEJSPzeo", // Abrar Sabbah (modern standard)
   },
   openai: { male: "ash", female: "nova" },
 };
 const DEFAULT_ELEVENLABS_VOICE_NAMES = {
-  male: { ar: "Mohammed Almansari", en: "Sully" },
-  female: { ar: "Abrar Sabbah", en: "Jessa" },
+  male: "Mohammed Almansari",
+  female: "Abrar Sabbah",
 };
 const DEFAULT_TTS_ENGINE = "elevenlabs";
 
@@ -89,12 +93,10 @@ function findVoiceIdByName(name) {
   return (all.find((v) => norm(v) === want) ?? all.find((v) => norm(v).startsWith(want)))?.id;
 }
 
-function resolveDefaultElevenVoicePair(gender) {
+function resolveDefaultElevenVoice(gender) {
   const fallback = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
-  const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
-  const ar = findVoiceIdByName(names.ar) ?? fallback.ar;
-  const en = findVoiceIdByName(names.en) ?? fallback.en;
-  return { ar, en };
+  const name = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
+  return findVoiceIdByName(name) ?? fallback;
 }
 
 /* ------------------------------------------------------------ form binding */
@@ -102,10 +104,7 @@ function resolveDefaultElevenVoicePair(gender) {
 const TEXT_FIELDS = [
   "profileName",
   "avatarId",
-  "voiceAr",
-  "voiceEn",
-  "elevenVoiceAr",
-  "elevenVoiceEn",
+  "elevenVoice",
   "elevenModel",
   "openaiVoice",
   "idleResetMinutes",
@@ -124,22 +123,30 @@ function defaultTtsEngine() {
   return available.includes(fallback) ? fallback : (available[0] ?? fallback);
 }
 
+/**
+ * Which gender the Male/Female buttons should show for these settings.
+ *
+ * Read the pinned voice first, then fall back to `voiceGender`. That order matters and
+ * the fallback is not decoration: an unset voice means "follow voiceGender", so
+ * deriving the answer only from the voice id reports "male" for every booth that never
+ * pinned one. The page then loaded a female avatar next to a male voice name, and
+ * saving it would have written that mismatch through — a woman's face speaking with a
+ * man's voice, which is the most visible way this booth can be wrong.
+ */
 function ttsGenderForSettings(s = read()) {
   const engine = s.ttsEngine || defaultTtsEngine();
+  const byGender = s.voiceGender === "female" ? "female" : "male";
   if (engine === "openai") {
-    return s.openaiVoice === "nova" ? "female" : "male";
+    if (s.openaiVoice === TTS_DEFAULT_VOICES.openai.female) return "female";
+    if (s.openaiVoice === TTS_DEFAULT_VOICES.openai.male) return "male";
+    return byGender;
   }
   if (engine === "elevenlabs") {
-    const male = TTS_DEFAULT_VOICES.elevenlabs.male;
-    const female = TTS_DEFAULT_VOICES.elevenlabs.female;
-    const arMatch = s.elevenVoiceAr === female.ar || s.elevenVoiceAr === male.ar;
-    const enMatch = s.elevenVoiceEn === female.en || s.elevenVoiceEn === male.en;
-    if (arMatch && enMatch) {
-      return s.elevenVoiceAr === female.ar && s.elevenVoiceEn === female.en ? "female" : "male";
-    }
-    return "male";
+    if (s.elevenVoice === TTS_DEFAULT_VOICES.elevenlabs.female) return "female";
+    if (s.elevenVoice === TTS_DEFAULT_VOICES.elevenlabs.male) return "male";
+    return byGender;
   }
-  return "male";
+  return byGender;
 }
 
 function applyTtsGender(value) {
@@ -149,9 +156,7 @@ function applyTtsGender(value) {
     return;
   }
   if (engine === "elevenlabs") {
-    const voices = resolveDefaultElevenVoicePair(value);
-    $("elevenVoiceAr").value = voices.ar;
-    $("elevenVoiceEn").value = voices.en;
+    $("elevenVoice").value = resolveDefaultElevenVoice(value);
   }
 }
 
@@ -166,9 +171,7 @@ function read() {
     s.openaiVoice = TTS_DEFAULT_VOICES.openai[gender] ?? "ash";
   }
   if (s.ttsEngine === "elevenlabs") {
-    const mapped = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
-    s.elevenVoiceAr = mapped.ar;
-    s.elevenVoiceEn = mapped.en;
+    s.elevenVoice = TTS_DEFAULT_VOICES.elevenlabs[gender] ?? TTS_DEFAULT_VOICES.elevenlabs.male;
   }
   s.idleResetMinutes = Number(s.idleResetMinutes) || 5;
   s.answerWords = Number(selected("lengthChoices", "words")) || 35;
@@ -226,9 +229,7 @@ function write(s) {
     $("openaiVoice").value = s.openaiVoice || TTS_DEFAULT_VOICES.openai[gender];
   }
   if (currentTtsEngine === "elevenlabs") {
-    const mapped = resolveDefaultElevenVoicePair(gender);
-    $("elevenVoiceAr").value = s.elevenVoiceAr || mapped.ar;
-    $("elevenVoiceEn").value = s.elevenVoiceEn || mapped.en;
+    $("elevenVoice").value = s.elevenVoice || resolveDefaultElevenVoice(gender);
   }
   select("ttsGenderChoices", "gender", gender);
   applyProvider();
@@ -277,18 +278,18 @@ function showFraming() {
  * Show the voice control that belongs to the selected engine, and say plainly what
  * the engine costs the booth.
  *
- * The Microsoft engines take one voice id per language; the multilingual ones take a
- * single voice for both. Showing all three groups at once would let an operator
- * carefully set an Arabic voice that the running engine never reads — the same class
- * of defect as leaving the voice pickers visible under Akool.
+ * Each engine keeps its own voice control, and only one is ever shown. Showing both
+ * at once would let an operator carefully set an ElevenLabs voice that the running
+ * engine never reads — the same class of defect as leaving the voice pickers visible
+ * under Akool.
  */
 function applyTtsEngine() {
   const id = selected("ttsChoices", "engine") || defaultTtsEngine();
   const e = ttsEngines.find((x) => x.id === id) || ttsEngines[0];
 
-  if ("microsoftVoiceFields" in window && $("microsoftVoiceFields")) $("microsoftVoiceFields").hidden = e?.voiceMode !== "microsoft";
-  if ("elevenVoiceFields" in window && $("elevenVoiceFields")) $("elevenVoiceFields").hidden = e?.voiceMode !== "pair";
-  if ("voiceEnField" in window && $("voiceEnField")) $("voiceEnField").hidden = e?.voiceMode !== "microsoft";
+  // Keyed on the engine id, not on voiceMode: both remaining engines are "single"
+  // now, so voiceMode no longer tells the two panels apart.
+  if ("elevenVoiceFields" in window && $("elevenVoiceFields")) $("elevenVoiceFields").hidden = id !== "elevenlabs";
   if ("openaiVoiceFields" in window && $("openaiVoiceFields")) $("openaiVoiceFields").hidden = id !== "openai";
   if ("ttsGenderFields" in window && $("ttsGenderFields")) $("ttsGenderFields").hidden = !["elevenlabs", "openai"].includes(id);
   const gender = selected("ttsGenderChoices", "gender") || (id === "openai" ? "male" : "male");
@@ -540,8 +541,7 @@ function seedDefaultUi() {
   if ($("fallbackMode")) select("fallbackMode", "mode", "speak");
   if ($("fallbackAr")) $("fallbackAr").value = DEFAULT_SETTINGS.fallback.messageAr;
   if ($("fallbackEn")) $("fallbackEn").value = DEFAULT_SETTINGS.fallback.messageEn;
-  if ($("elevenVoiceAr")) $("elevenVoiceAr").value = DEFAULT_SETTINGS.elevenVoiceAr;
-  if ($("elevenVoiceEn")) $("elevenVoiceEn").value = DEFAULT_SETTINGS.elevenVoiceEn;
+  if ($("elevenVoice")) $("elevenVoice").value = DEFAULT_SETTINGS.elevenVoice;
   if ($("openaiVoice")) $("openaiVoice").value = DEFAULT_SETTINGS.openaiVoice;
   if ($("avatarId")) $("avatarId").value = "";
 
@@ -635,11 +635,6 @@ $("testLang").addEventListener("click", (e) => {
 
 function renderPreview() {
   const s = read();
-  const words = s.answerWords;
-  // 1.4 words a second, measured on the shipping Arabic voice — see WORDS_PER_SECOND
-  // in server/system-prompt.mjs. The old 2.2 was an English reading rate and told the
-  // operator an answer would run half as long as it does.
-  const seconds = Math.round(words / 1.4);
   // Name the face belonging to the selected renderer. Reading the Anam picker whatever
   // the provider was is how the summary came to say "Visitors meet Faisal via Akool"
   // while Akool was in fact set to Dalia.
@@ -659,93 +654,61 @@ function renderPreview() {
   const stt = sttEngines.find((x) => x.id === s.sttEngine) ?? sttEngines[0];
   const providerName = p?.label ?? "Anam";
 
-  // Which voice a visitor will actually hear. The gender buttons are the control on
-  // this page and read() maps them straight onto the ElevenLabs pair / OpenAI voice,
-  // so resolve the name from the selected gender rather than from the override fields
-  // — those are always filled in now, and a raw voice id tells an operator nothing.
-  const gender = selected("ttsGenderChoices", "gender") || "male";
-  let voiceRows = [["Provided by", tts?.label ?? s.ttsEngine]];
+  /**
+   * The one voice a visitor will actually hear.
+   *
+   * The gender buttons are the control on this page and read() maps them straight
+   * onto the ElevenLabs or OpenAI voice, so resolve the name from the selected gender
+   * rather than from the override field — a raw voice id tells an operator nothing.
+   */
+  // Fall back to the settings rather than to "male": this runs once before the gender
+  // buttons have been populated, and a hardcoded default there is what put a male
+  // voice name next to a female character on first paint.
+  const gender = selected("ttsGenderChoices", "gender") || ttsGenderForSettings(s);
+  let voiceTool = tts?.label ?? s.ttsEngine;
+  let voiceName = "—";
   if (p?.mode === "text") {
     // Akool speaks with its own voice, so the TTS card is not in play at all. Saying
     // so here stops an operator from tuning a voice the visitor will never hear.
-    voiceRows = [
-      ["Provided by", `${providerName} — it speaks in its own voice`],
-      ["Voice settings below", "Not used while this avatar is selected"],
-    ];
+    voiceTool = providerName;
+    voiceName = "Its own — the voice settings below are unused";
   } else if (tts?.id === "elevenlabs") {
-    const names = DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male;
-    voiceRows = [
-      ["Provided by", "ElevenLabs"],
-      ["Arabic voice", names.ar],
-      ["English voice", names.en],
-    ];
+    voiceName = s.elevenVoice
+      ? elevenName(s.elevenVoice)
+      : (DEFAULT_ELEVENLABS_VOICE_NAMES[gender] ?? DEFAULT_ELEVENLABS_VOICE_NAMES.male);
   } else if (tts?.id === "openai") {
-    voiceRows = [
-      ["Provided by", "OpenAI"],
-      ["Voice", `${gender === "female" ? "Nova" : "Ash"} — used for both languages`],
-    ];
-  } else if (tts?.voiceMode === "microsoft") {
-    voiceRows = [
-      ["Provided by", tts.label ?? "Microsoft"],
-      ["Arabic voice", shortVoice(s.voiceAr)],
-      ["English voice", shortVoice(s.voiceEn)],
-    ];
+    voiceName = gender === "female" ? "Nova" : "Ash";
   }
 
-  const facts = s.extraKnowledge.trim() ? s.extraKnowledge.trim().split("\n").filter(Boolean).length : 0;
-  const minutes = (n) => `${n} ${Number(n) === 1 ? "minute" : "minutes"} of silence`;
-
-  // The model buttons carry their own plain-English subtitle ("best quality",
-  // "fastest"). Read it back rather than restating it here, so the summary cannot
-  // drift from the control, and never show the raw model id.
-  const modelBtn = $("modelChoices")?.querySelector('[aria-pressed="true"]');
-  const modelName = modelBtn?.firstChild?.textContent?.trim();
-  const modelNote = modelBtn?.querySelector("small")?.textContent?.split("·").pop()?.trim();
-
-  const groups = [
-    ["Avatar", [
-      ["Character", av || "The booth default"],
-      ["Shown by", providerName],
-      ["Starts", s.requireTapToStart
-        ? "When a visitor touches the screen"
-        : "As soon as the booth opens"],
-      ["Turns itself off after", minutes(s.idleDisconnectMinutes)],
-    ]],
-    ["Voice", voiceRows],
-    ["Listening", [
-      ["Understands speech using", stt?.label ?? s.sttEngine],
-    ]],
-    ["How it talks", [
-      ["Answer length", `About ${seconds} seconds`],
-      ["Answer speed", modelName ? `${modelName}${modelNote ? ` — ${modelNote}` : ""}` : "—"],
-      ["Greeting", s.greetFirstAnswer ? "Greets each visitor once" : "No greeting"],
-      ["Conversation resets after", minutes(s.idleResetMinutes)],
-      ...(facts ? [["Extra facts added", `${facts}`]] : []),
-    ]],
-    ["If an answer fails", [
-      ["What the booth does", s.fallback.enabled
-        ? (s.fallback.mode === "speak"
-            ? "Says a short apology out loud"
-            : "Shows a short apology on screen")
-        : "Nothing — the screen just waits"],
-    ]],
+  /**
+   * Five rows, flat — no groups, no second column.
+   *
+   * This used to mirror every card below it: how long an answer runs, which model
+   * writes it, what happens when one fails, when the avatar disconnects. All of it
+   * true, and all of it already visible in the card that owns it. What an operator
+   * actually checks at a stand is narrower — is the right face up, is it listening,
+   * and whose voice is it about to speak in — so the summary answers only that.
+   *
+   * Arabic and English are deliberately one row. They cannot differ any more, and two
+   * rows that always agree invite the reader to look for a difference that is gone.
+   */
+  const rows = [
+    ["Avatar Tool", providerName],
+    ["Character", av || "The booth default"],
+    ["Listening Tool", stt?.label ?? s.sttEngine],
+    ["Voice Tool", voiceTool],
+    ["Voice", voiceName],
   ];
 
   const preview = $("preview");
   if (preview) {
-    preview.innerHTML = groups
-      .map(([title, rows]) => `
-        <section class="sum-group">
-          <h3>${escape(title)}</h3>
-          <dl>
-            ${rows.map(([k, v]) => `
-              <div class="sum-row">
-                <dt>${escape(k)}</dt>
-                <dd>${escape(v ?? "—")}</dd>
-              </div>`).join("")}
-          </dl>
-        </section>`)
-      .join("");
+    preview.innerHTML = `<dl>${rows
+      .map(([k, v]) => `
+        <div class="sum-row">
+          <dt>${escape(k)}</dt>
+          <dd>${escape(v ?? "—")}</dd>
+        </div>`)
+      .join("")}</dl>`;
   }
 }
 
@@ -759,12 +722,17 @@ function elevenName(id) {
   return v ? v.name : id;
 }
 
-/** "ar-SA-HamedNeural" reads as noise to an operator; "Hamed (Saudi)" does not. */
-function shortVoice(id) {
-  const v = voices.find((x) => x.id === id);
-  if (!v) return id || "—";
-  const name = id.split("-")[2]?.replace(/Neural$/, "") ?? id;
-  return `${name} (${v.locale}, ${v.gender.toLowerCase()})`;
+/**
+ * Name a voice for a test-lab row.
+ *
+ * ElevenLabs ids are opaque, so they have to be looked up in the account's catalogue;
+ * OpenAI's are already words ("ash", "nova"). Neither is worth showing raw — a row
+ * that reads "2bnoa3wtrtcUW41TrSJM" tells an operator nothing about what they just
+ * heard, which is the whole point of the comparison.
+ */
+function voiceLabel(engine, id) {
+  if (!id) return "—";
+  return engine === "elevenlabs" ? elevenName(id) : id;
 }
 
 /* ---------------------------------------------------------------- test lab */
@@ -804,7 +772,7 @@ function renderTtsResults(results, chosen) {
     if (r.ok) {
       row.innerHTML =
         `<span class="name">${escape(r.label)}</span>` +
-        `<span class="meta">${r.seconds}s audio · ${r.ms} ms to make · ${escape(shortVoice(r.voice) || r.voice || "—")}</span>` +
+        `<span class="meta">${r.seconds}s audio · ${r.ms} ms to make · ${escape(voiceLabel(r.engine, r.voice))}</span>` +
         `<span class="spacer"></span>`;
       const btn = document.createElement("button");
       btn.type = "button";
@@ -843,10 +811,7 @@ async function compareTts(engines) {
         // The voice fields as they stand on screen, saved or not — the lab must test
         // the choice being made, not the one already stored.
         overrides: {
-          voiceAr: $("voiceAr").value,
-          voiceEn: $("voiceEn").value,
-          elevenVoiceAr: $("elevenVoiceAr").value,
-          elevenVoiceEn: $("elevenVoiceEn").value,
+          elevenVoice: $("elevenVoice").value,
           elevenModel: $("elevenModel").value,
           openaiVoice: $("openaiVoice").value,
         },
@@ -1032,10 +997,9 @@ initTheme();
 labelTheme();
 
 async function boot() {
-  const [settings, avatarsRes, voicesRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([
+  const [settings, avatarsRes, providersRes, ttsRes, sttRes, elevenRes, akoolRes] = await Promise.all([
     fetch("/api/settings").then((r) => r.json()).catch(() => ({})),
     fetch("/api/avatars").then((r) => r.json()).catch(() => ({ data: [] })),
-    fetch("/api/voices").then((r) => r.json()).catch(() => ({ voices: [] })),
     fetch("/api/avatar/providers").then((r) => r.json()).catch(() => ({ providers: [] })),
     fetch("/api/tts/engines").then((r) => r.json()).catch(() => ({ engines: [], openaiVoices: [] })),
     fetch("/api/stt/engines").then((r) => r.json()).catch(() => ({ engines: [] })),
@@ -1043,7 +1007,6 @@ async function boot() {
     fetch("/api/akool/avatars").then((r) => r.json()).catch(() => ({ avatars: [] })),
   ]);
 
-  voices = voicesRes.voices ?? [];
   providers = providersRes.providers ?? [];
   // Both endpoints are already filtered to the booth's two faces and carry the gender
   // of each, which is what lets the character buttons exist at all.
@@ -1096,42 +1059,41 @@ async function boot() {
    */
   elevenVoices = elevenRes.voices ?? [];
 
-  // Two pickers, ordered so the language's own native voices come first. A booth in
-  // Riyadh should not have to scroll past twenty American voices to find the Arabic
-  // one, and the ordering is the cheapest way to say which voices belong here.
-  for (const [selId, langCode] of [["elevenVoiceAr", "ar"], ["elevenVoiceEn", "en"]]) {
-    const sel = $(selId);
-    if (!sel) continue;
-    sel.innerHTML = "";
+  // One picker, Arabic voices first. A booth in Riyadh should not have to scroll past
+  // twenty American voices to find the Arabic one, and since this single voice now has
+  // to speak Arabic *and* English, the ones that can do the harder half come first.
+  const elevenSel = $("elevenVoice");
+  if (elevenSel) {
+    elevenSel.innerHTML = "";
     if (!elevenVoices.length) {
-      const savedId = settings[selId];
-      sel.innerHTML = `<option value="${escape(savedId)}">${escape(savedId || "none configured")}</option>`;
-      continue;
-    }
-    // The empty option is the normal state, not an escape hatch — with the Male/Female
-    // switch above doing the work, most booths never touch these two. Naming it after
-    // that switch rather than after an environment variable is what makes the
-    // relationship visible to an operator who has never read the .env file.
-    const useEnv = document.createElement("option");
-    useEnv.value = "";
-    useEnv.textContent = "Follow the Male / Female choice above";
-    sel.appendChild(useEnv);
+      const savedId = settings.elevenVoice;
+      elevenSel.innerHTML = `<option value="${escape(savedId)}">${escape(savedId || "none configured")}</option>`;
+    } else {
+      // The empty option is the normal state, not an escape hatch — with the
+      // Male/Female switch above doing the work, most booths never touch this.
+      // Naming it after that switch rather than after an environment variable is what
+      // makes the relationship visible to an operator who has never read .env.
+      const useEnv = document.createElement("option");
+      useEnv.value = "";
+      useEnv.textContent = "Follow the Male / Female choice above";
+      elevenSel.appendChild(useEnv);
 
-    const native = elevenVoices.filter((v) => v.language === langCode);
-    const rest = elevenVoices.filter((v) => v.language !== langCode);
-    for (const [group, list] of [[`${langCode === "ar" ? "Arabic" : "English"} voices`, native], ["Other languages", rest]]) {
-      if (!list.length) continue;
-      const g = document.createElement("optgroup");
-      g.label = group;
-      for (const v of list) {
-        const o = document.createElement("option");
-        o.value = v.id;
-        o.textContent = [v.name, v.accent && v.accent !== "-" ? `(${v.accent})` : "", v.gender ? `· ${v.gender}` : ""]
-          .filter(Boolean)
-          .join(" ");
-        g.appendChild(o);
+      const native = elevenVoices.filter((v) => v.language === "ar");
+      const rest = elevenVoices.filter((v) => v.language !== "ar");
+      for (const [group, list] of [["Arabic voices", native], ["Other languages", rest]]) {
+        if (!list.length) continue;
+        const g = document.createElement("optgroup");
+        g.label = group;
+        for (const v of list) {
+          const o = document.createElement("option");
+          o.value = v.id;
+          o.textContent = [v.name, v.accent && v.accent !== "-" ? `(${v.accent})` : "", v.gender ? `· ${v.gender}` : ""]
+            .filter(Boolean)
+            .join(" ");
+          g.appendChild(o);
+        }
+        elevenSel.appendChild(g);
       }
-      sel.appendChild(g);
     }
   }
 
@@ -1150,11 +1112,15 @@ async function boot() {
     }
   }
 
+  // Both arms said the same sentence, which is how it survived the voice pair being
+  // removed while still describing it. Say the thing that is now true instead: one
+  // voice, both languages — and, when the catalogue did not load, say that too rather
+  // than describing a picker the operator is looking at an empty version of.
   const elevenHint = $("elevenHint");
   if (elevenHint) {
     elevenHint.textContent = elevenVoices.length
-      ? "Supports natural Arabic and English voices."
-      : "Supports natural Arabic and English voices.";
+      ? "One voice speaks both Arabic and English."
+      : "Could not read the voice list from ElevenLabs — check ELEVENLABS_API_KEY.";
   }
 
   /**
@@ -1271,23 +1237,6 @@ async function boot() {
           `The booth's ${avatars.length} faces.` +
           (savedId ? "" : " Currently following ANAM_AVATAR_ID from .env.");
       }
-    }
-  }
-
-  for (const [selId, lang] of [["voiceAr", "ar"], ["voiceEn", "en"]]) {
-    const sel = $(selId);
-    if (!sel) continue;
-    sel.innerHTML = "";
-    const list = voices.filter((v) => v.language === lang);
-    if (!list.length) {
-      sel.innerHTML = `<option value="${escape(settings[selId])}">${escape(settings[selId])}</option>`;
-      continue;
-    }
-    for (const v of list) {
-      const o = document.createElement("option");
-      o.value = v.id;
-      o.textContent = shortVoice(v.id);
-      sel.appendChild(o);
     }
   }
 
