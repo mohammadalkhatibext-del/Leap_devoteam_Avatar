@@ -403,12 +403,23 @@ async function askQuestion(question, spokenLanguage = null) {
   // real time. Without this the whole answer would be pushed into the renderer within
   // a second and the subtitles would race ahead of the voice.
   let playHead = Promise.resolve();
+  // Stutter diagnostics. What a visitor hears as a stumble is dead air *between*
+  // clips, not inside one, so the number to record is the gap: how long after one
+  // clip's audio ended the next one actually started. This has to be measured inside
+  // the playHead chain — at enqueue time every clip looks instant, because the queue
+  // is exactly what is hiding the wait.
+  let clipEndedAt = 0;
+  let clipCount = 0;
   const speakClip = (pcm, text) => {
     playHead = playHead.then(async () => {
+      const ms = durationMs(pcm, SAMPLE_RATE);
+      const gap = clipEndedAt ? Math.round(performance.now() - clipEndedAt) : 0;
+      console.log(`[clip] #${++clipCount} gap=${gap}ms duration=${Math.round(ms)}ms`);
       $("subtitle").textContent = text;
       setPhase("speaking");
       avatar.push(pcm, ctx);
-      await new Promise((r) => setTimeout(r, durationMs(pcm, SAMPLE_RATE)));
+      await new Promise((r) => setTimeout(r, ms));
+      clipEndedAt = performance.now();
     });
   };
 

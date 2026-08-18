@@ -467,11 +467,25 @@ export function boothApi({ log } = {}) {
 
         const t0 = Date.now();
 
+        // The server half of the stutter trace. Each clip is one TTS request, so the
+        // count is also the request count, and the moment a clip is handed to the
+        // renderer bounds when the booth could possibly have played it. Durations and
+        // timings only — the answer text is a visitor's conversation and does not
+        // belong in a log that outlives the session.
+        let clips = 0;
+        let spokenMs = 0;
+
         // No acknowledgement clip. The avatar's first sound is now the answer itself —
         // see the note where FILLERS used to live in server/tts.mjs for what replaced
         // it and why it must not come back untested.
         const queue = new SpeechQueue(
-          (pcm, { index, text }) => send("audio", { index, text, pcm: pcm.toString("base64") }),
+          (pcm, { index, text }) => {
+            const ms = Math.round((pcm.length / 2 / SAMPLE_RATE) * 1000);
+            clips++;
+            spokenMs += ms;
+            info(`clip ${index} sent at ${Date.now() - t0}ms — ${ms}ms of audio`);
+            send("audio", { index, text, pcm: pcm.toString("base64") });
+          },
           { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
         );
 
@@ -486,6 +500,7 @@ export function boothApi({ log } = {}) {
             },
           });
           await queue.drain();
+          info(`answer spoke as ${clips} clip(s), ${spokenMs}ms of audio, ${Date.now() - t0}ms wall`);
 
           // A booth that answered on a spare model looks identical to one that never
           // stumbled, which is the point at the stand and a problem afterwards. Say it
