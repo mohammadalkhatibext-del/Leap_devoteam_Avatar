@@ -495,12 +495,22 @@ export function boothApi({ log } = {}) {
           res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 
         const t0 = Date.now();
+        let ttsRequestCount = 0;
+        let audioPlaybackStarts = 0;
+        let playbackRestarted = false;
 
         // No acknowledgement clip. The avatar's first sound is now the answer itself —
         // see the note where FILLERS used to live in server/tts.mjs for what replaced
         // it and why it must not come back untested.
         const queue = new SpeechQueue(
-          (pcm, { index, text }) => send("audio", { index, text, pcm: pcm.toString("base64") }),
+          (pcm, { index, text }) => {
+            const durationSeconds = (pcm.length / 2 / SAMPLE_RATE).toFixed(2);
+            audioPlaybackStarts += 1;
+            console.log(
+              `[tts] audio playback start #${audioPlaybackStarts} duration=${durationSeconds}s interrupted/restarted=${String(playbackRestarted)}`,
+            );
+            send("audio", { index, text, pcm: pcm.toString("base64") });
+          },
           { voice, engine: ttsEngine, language: answerLanguage, model: ttsModel },
         );
 
@@ -510,11 +520,17 @@ export function boothApi({ log } = {}) {
             defaultLanguage,
             spokenLanguage,
             onSentence: (s) => {
+              ttsRequestCount += 1;
+              console.log(`[tts] full LLM answer: ${s}`);
+              console.log(`[tts] TTS requests=${ttsRequestCount}`);
               send("sentence", { text: s });
               queue.push(s);
             },
           });
           await queue.drain();
+          console.log(
+            `[tts] final answer complete — requests=${ttsRequestCount} playbackStarts=${audioPlaybackStarts} duration=${((result.answer.length || 0) / 4).toFixed(1)} chars`,
+          );
 
           // Keep a degraded answer out of history. If it goes in, the model reads
           // its own English as precedent and every later answer in this visitor's

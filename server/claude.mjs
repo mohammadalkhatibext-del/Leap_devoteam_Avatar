@@ -37,80 +37,6 @@ function corpus(settings) {
 }
 
 /**
- * Arabic sentence enders. `،` (Arabic comma) is deliberately absent — it is a comma,
- * not a full stop, and splitting every clause on it would chop answers mid-thought.
- * See CLAUSE_BREAK below for the one place a comma *is* allowed to cut.
- */
-const SENTENCE_END = /[.!?؟۔]/;
-
-/**
- * Clause boundaries, used for the FIRST emission only.
- *
- * Measured against this corpus: the model's first token lands around 1.9 s, its first
- * comma around 2.5 s, and its first full stop around 4.2 s. Waiting for the full stop
- * therefore costs ~1.7 s during which the avatar has words available and is not saying
- * them, at the one moment a visitor is most likely to conclude the thing is broken.
- *
- * Only the first, and this is the whole design. Later sentences are synthesised while
- * an earlier clip is still playing, so cutting them early recovers nothing — and it
- * would cost something real: TTS gives each clip its own intonation contour, so a
- * clause spoken alone falls at the end like a finished sentence. Paying that once, on
- * the opening fragment, to start 1.7 s sooner is a good trade. Paying it on every
- * clause of every answer is not.
- */
-const CLAUSE_BREAK = /[،,؛;:]/;
-
-/** Below this, a first clause is too short to be worth its own clip and its own breath. */
-const MIN_FIRST_CLAUSE = 24;
-
-/**
- * Buffers streamed text and releases it one complete sentence at a time, so the
- * TTS/avatar leg can start speaking sentence one while Claude is still writing
- * sentence three. This is the whole latency story for the booth: without it, the
- * visitor waits for the full response before the mouth moves.
- */
-class Sentencer {
-  #buf = "";
-  #emitted = 0;
-  constructor(onSentence) {
-    this.onSentence = onSentence;
-  }
-  push(text) {
-    this.#buf += text;
-    let cut;
-    // Emit up to and including each sentence terminator, plus any trailing
-    // closing punctuation/space that belongs with it.
-    while ((cut = this.#findEnd(this.#buf)) !== -1) {
-      const sentence = this.#buf.slice(0, cut + 1).trim();
-      this.#buf = this.#buf.slice(cut + 1);
-      if (sentence) {
-        this.#emitted++;
-        this.onSentence(sentence);
-      }
-    }
-  }
-  #findEnd(s) {
-    for (let i = 0; i < s.length; i++) {
-      // The clause escape hatch, live only until something has been emitted.
-      if (this.#emitted === 0 && i >= MIN_FIRST_CLAUSE && CLAUSE_BREAK.test(s[i])) return i;
-      if (!SENTENCE_END.test(s[i])) continue;
-      // "3.5" / "www.devoteam.com" — a period between digits or letters is not a stop.
-      if (s[i] === "." && /[\d\w]/.test(s[i - 1] ?? "") && /[\d\w]/.test(s[i + 1] ?? "")) continue;
-      return i;
-    }
-    return -1;
-  }
-  flush() {
-    const rest = this.#buf.trim();
-    this.#buf = "";
-    if (rest) {
-      this.#emitted++;
-      this.onSentence(rest);
-    }
-  }
-}
-
-/**
  * Thinking is disabled for latency — a booth visitor is standing there waiting, and
  * Opus 5 at low effort answers a grounded lookup well without it. The documented
  * cost of disabling thinking on Opus 5 is that internal XML tags can occasionally
@@ -184,7 +110,6 @@ export async function ask(
 ) {
   const settings = await getSettings();
   const { blocks } = await corpus(settings);
-  const sentencer = onSentence ? new Sentencer((s) => onSentence(stripTags(s))) : null;
   // Both directives ride with the question, past the cache breakpoint — see
   // buildLengthDirective for why the length rule cannot live in the system prompt.
   const directive =
@@ -194,14 +119,7 @@ export async function ask(
   const startedAt = Date.now();
   let firstTokenMs = null;
   let firstSentenceMs = null;
-  if (sentencer) {
-    const inner = sentencer.onSentence;
-    sentencer.onSentence = (s) => {
-      firstSentenceMs ??= Date.now() - startedAt;
-      inner(s);
-    };
-  }
-
+  let fullText = "";
   const model = modelFor(settings);
 
   // Not every model takes `effort`, and sending it to one that does not is a hard 400
@@ -218,7 +136,7 @@ export async function ask(
     // English notes in bullets and table rows, and the answer has to be spoken Arabic
     // prose. At `low`, Sonnet takes the most literal path available and reads source
     // lines out verbatim — including English ones, mid-Arabic-answer. `medium` makes
-    // it compose instead, for latency the clause-level flush above has since repaid.
+    // it compose instead.
     ...(supportsEffort
       ? {
           thinking: { type: "disabled" },
@@ -237,15 +155,17 @@ export async function ask(
 
   stream.on("text", (delta) => {
     firstTokenMs ??= Date.now() - startedAt;
-    sentencer?.push(delta);
+    fullText += delta;
   });
 
   const message = await stream.finalMessage();
-  sentencer?.flush();
-
-  const answer = stripTags(
-    message.content.filter((b) => b.type === "text").map((b) => b.text).join(""),
-  );
+  const combined =
+    message.content.filter((b) => b.type === "text").map((b) => b.text).join("") || fullText;
+  const answer = stripTags(combined);
+  if (onSentence) {
+    firstSentenceMs ??= Date.now() - startedAt;
+    onSentence(answer);
+  }
 
   // Every cited span, with the section it came from — this is what booth staff
   // check an answer against, and what the guardrail below is measured on.
@@ -254,6 +174,8 @@ export async function ask(
     .flatMap((b) => b.citations ?? [])
     .map((c) => ({ title: c.document_title, quote: c.cited_text?.trim() }));
 
+  console.log(`[claude] full answer: ${answer}`);
+
   return {
     answer,
     citations,
@@ -261,10 +183,13 @@ export async function ask(
     leakedSource: looksLikeSourceLeak(answer, question),
     model,
     stopReason: message.stop_reason,
-    // firstSentenceMs, not just firstTokenMs, is the number that describes the booth:
-    // it is the moment the avatar can physically start speaking. Reporting only time
-    // to first token flattered the pipeline by a second and a half.
-    timing: { firstTokenMs, firstSentenceMs, totalMs: Date.now() - startedAt },
+    // The booth now waits for the full answer before TTS starts. This keeps the
+    // pipeline to a single synthesis request and a single continuous audio event.
+    timing: {
+      firstTokenMs,
+      firstSentenceMs: firstSentenceMs ?? firstTokenMs,
+      totalMs: Date.now() - startedAt,
+    },
     usage: {
       input: message.usage.input_tokens,
       output: message.usage.output_tokens,

@@ -403,7 +403,15 @@ async function askQuestion(question, spokenLanguage = null) {
   // real time. Without this the whole answer would be pushed into the renderer within
   // a second and the subtitles would race ahead of the voice.
   let playHead = Promise.resolve();
+  let audioPlaybackStarts = 0;
+  let playbackInterrupted = false;
+  let playbackRestarted = false;
   const speakClip = (pcm, text) => {
+    const durationSeconds = (durationMs(pcm, SAMPLE_RATE) / 1000).toFixed(2);
+    audioPlaybackStarts += 1;
+    console.log(
+      `[audio] playback start #${audioPlaybackStarts} duration=${durationSeconds}s interrupted=${String(playbackInterrupted)} restarted=${String(playbackRestarted)}`,
+    );
     playHead = playHead.then(async () => {
       $("subtitle").textContent = text;
       setPhase("speaking");
