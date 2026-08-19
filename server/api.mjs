@@ -28,7 +28,7 @@ import {
   listAkoolAvatars,
   boothAvatars,
 } from "./providers.mjs";
-import { ensureTts, prewarmEngine, speak, SpeechQueue, SAMPLE_RATE, toWav } from "./tts.mjs";
+import { prewarmEngine, speak, SpeechQueue, SAMPLE_RATE, toWav } from "./tts.mjs";
 import {
   listTtsEngines,
   voiceFor,
@@ -37,7 +37,6 @@ import {
   TTS_ENGINES,
   OPENAI_VOICES,
   ELEVEN_MODELS,
-  ELEVEN_VOICE_PAIRS,
 } from "./tts-engines.mjs";
 import { transcribe, transcribeAll, listSttEngines } from "./stt-engines.mjs";
 
@@ -120,7 +119,6 @@ export function startTtsSupervisor({ log } = {}) {
   const start = () =>
     getSettings()
       .then(async (settings) => {
-        if (settings.ttsEngine === "edge") await ensureTts({ log: info });
         return warmEngine(settings);
       })
       .then((n) => info(`TTS ready — ${n} voices warm`))
@@ -299,7 +297,6 @@ export function boothApi({ log } = {}) {
           engines: listTtsEngines(),
           openaiVoices: OPENAI_VOICES,
           elevenModels: ELEVEN_MODELS,
-          elevenPairs: ELEVEN_VOICE_PAIRS,
         });
         return true;
       }
