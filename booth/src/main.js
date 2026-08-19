@@ -403,23 +403,20 @@ async function askQuestion(question, spokenLanguage = null) {
   // real time. Without this the whole answer would be pushed into the renderer within
   // a second and the subtitles would race ahead of the voice.
   let playHead = Promise.resolve();
-  // Stutter diagnostics. What a visitor hears as a stumble is dead air *between*
-  // clips, not inside one, so the number to record is the gap: how long after one
-  // clip's audio ended the next one actually started. This has to be measured inside
-  // the playHead chain — at enqueue time every clip looks instant, because the queue
-  // is exactly what is hiding the wait.
-  let clipEndedAt = 0;
-  let clipCount = 0;
+  let audioPlaybackStarts = 0;
+  let playbackInterrupted = false;
+  let playbackRestarted = false;
   const speakClip = (pcm, text) => {
+    const durationSeconds = (durationMs(pcm, SAMPLE_RATE) / 1000).toFixed(2);
+    audioPlaybackStarts += 1;
+    console.log(
+      `[audio] playback start #${audioPlaybackStarts} duration=${durationSeconds}s interrupted=${String(playbackInterrupted)} restarted=${String(playbackRestarted)}`,
+    );
     playHead = playHead.then(async () => {
-      const ms = durationMs(pcm, SAMPLE_RATE);
-      const gap = clipEndedAt ? Math.round(performance.now() - clipEndedAt) : 0;
-      console.log(`[clip] #${++clipCount} gap=${gap}ms duration=${Math.round(ms)}ms`);
       $("subtitle").textContent = text;
       setPhase("speaking");
       avatar.push(pcm, ctx);
-      await new Promise((r) => setTimeout(r, ms));
-      clipEndedAt = performance.now();
+      await new Promise((r) => setTimeout(r, durationMs(pcm, SAMPLE_RATE)));
     });
   };
 
@@ -455,16 +452,6 @@ async function askQuestion(question, spokenLanguage = null) {
       speakClip(fromBase64(pcm), text);
     });
 
-    /**
-     * Name the model, and the vendor too when it is not the usual one.
-     *
-     * Bare model ids are unambiguous while Claude is answering. They stop being so the
-     * moment a fallback rung takes over: "gpt-4o" alone on the metrics line does not
-     * say whether that was chosen or fallen back into.
-     */
-    const modelLabel = (d) =>
-      !d.provider || d.provider === "anthropic" ? (d.model ?? "") : `${d.provider}/${d.model}`;
-
     es.addEventListener("done", (e) => {
       const d = JSON.parse(e.data);
       showSources(d.citations, d.grounded);
@@ -473,13 +460,8 @@ async function askQuestion(question, spokenLanguage = null) {
       $("metrics").textContent =
         `speak at ${d.timing.firstSentenceMs}ms (first token ${d.timing.firstTokenMs}ms) · ` +
         `answer ${d.timing.totalMs}ms · cache read ${d.usage.cacheRead} · ` +
-        `out ${d.usage.output} · ${modelLabel(d)} · ${d.language}`;
+        `out ${d.usage.output} · ${d.model ?? ""} · ${d.language}`;
       log(`answered in ${d.language} — ${d.citations.length} citations`);
-      // An empty sources panel is normal from a non-Claude rung and suspicious from
-      // Claude. Without this line the two look identical on the operator screen.
-      if (d.attempts?.length) {
-        log(`fell through ${d.attempts.length} model(s) to ${d.provider} — see server log`);
-      }
       hasConversation = true;
       es.close();
       resolve();
